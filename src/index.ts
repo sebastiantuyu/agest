@@ -1,37 +1,33 @@
-// A simple Jest-like syntax implementation for demonstration
+import type { AgentExecutor, AgentReport } from "./types";
+import { AgentContext, SceneBuilder, setContext, getContext } from "./context";
 
-type Assertion<T> = {
-  toBe: (expected: T) => void;
-};
+export { expect } from "./assertions";
+export { logger } from "./logger";
+export type { LogLevel } from "./logger";
+export type { AgentExpectation, AgentMatchers } from "./assertions";
+export type {
+  AgentExecutor,
+  AgentResponse,
+  AgentReport,
+  SceneResult,
+} from "./types";
 
-export function expect<T>(actual: T): Assertion<T> {
-  return {
-    toBe(expected: T) {
-      if (actual !== expected) {
-        throw new Error(`Expected ${String(expected)} but got ${String(actual)}`);
-      }
-      console.log('✅ Passed');
-    }
-  };
+export function scene(prompt: string): SceneBuilder {
+  return getContext().registerScene(prompt);
 }
 
-export function test(name: string, fn: () => void | Promise<void>) {
-  console.log(`Running: ${name}`);
+export async function agent(
+  executor: AgentExecutor,
+  fn: () => void
+): Promise<AgentReport> {
+  const ctx = new AgentContext(executor);
+  setContext(ctx);
+
   try {
     fn();
-  } catch (error) {
-    console.error(`❌ Failed: ${name}`);
-    console.error(error);
+  } finally {
+    setContext(null);
   }
+
+  return ctx.execute();
 }
-
-// Basic type assertion check to ensure TypeScript is enforcing types correctly
-const a: number = 5;
-// The below line proves type checking works if we don't compile it out, or we can just ensure tsc verifies it.
-// To ensure it builds we will comment it out or use as string
-const b: string = a as unknown as string;
-
-// Simple test
-test("basic math works", () => {
-  expect(1 + 1).toBe(2);
-});

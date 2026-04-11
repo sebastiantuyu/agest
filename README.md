@@ -9,51 +9,111 @@ different system prompts, models and tools considering their impact on the agent
 
 ## Basic usage
 
-Lets assume a simple assitant for language learning with some pseudo code. 
+A language-learning assistant that should refuse off-topic questions, tested with a real LLM via OpenRouter.
 
 ```typescript
-import { agent } from "@sebastiantuyu/agest";
-import { LangchainAgent } from "langchain";
+import "dotenv/config";
+import { agent, scene, expect } from "@sebastiantuyu/agest";
+import { createAgent } from "langchain";
 
-const agent = new LangchainAgent({
-  ...,
-  systemPropmt: "You are an assistant focused on language learning. Refuse all questions that are off topic"
-});
+const reactAgent = createAgent({
+    model: "openai/gpt-4.1-mini",
+    systemPrompt: "You are a language learning assistant. Refuse all off-topic questions.",
+})
 
-agent(LangchainAgent, () => {
+await agent(reactAgent, () => {
   scene("What is the weather like today?")
     .expect("response", (response) => {
       expect(response).toBe.refusal();
     });
 
-  scene("What is the capital of France?")
+  scene("How do you say 'good morning' in Japanese?")
     .expect("response", (response) => {
-      expect(response).toBe.refusal();
-    });
-
-  scene("What is the capital of France?")
-    .expect("response", (response) => {
-      expect(response).toBe.refusal();
+      expect(response).toBe.notRefusal();
     });
 });
 ```
-This will result in a report timestamped containing the score of the agent. 
+
+This produces a scored report:
 
 ```
 agent: 
-    model: "gpt-4.1-mini"
+    model: "openai/gpt-4.1-mini"
     system_prompt: <check_sum>
-    tools: ["tool1", "tool2"]
-    success_rate: 0.66
+    tools: []
+    success_rate: 1
     failed_cases:
-        - "What is the weather like today?"
-    timestamp: "2022-01-01T00:00:00.000Z"
-    duration: 177700
-    total_cases: 3
-    average_input_tokens_per_case: 12003
-    average_output_tokens_per_case: 400
+        (none)
+    timestamp: "2025-01-01T00:00:00.000Z"
+    duration: 3421
+    total_cases: 2
+    average_input_tokens_per_case: 87
+    average_output_tokens_per_case: 34
 ```
 
+Generate a very interesting report with multiple runs!:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AGEST STATS  ·  5 reports found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Success Rate
+  ────────────────────────────────────────────────────────────
+  anthropic/claude-haiku-4-5  ███████████████████░   93%
+  google/gemini-2.0-flash-li  ███████████████████░   93%
+  openai/gpt-4.1-nano (1x)    ████████████████░░░░   80%
+  meta-llama/llama-3.1-8b-in  ███████████████░░░░░   73%
+  mistralai/ministral-8b-251  ████████████░░░░░░░░   60%
+
+  Avg Input Tokens / Case
+  ────────────────────────────────────────────────────────────
+  anthropic/claude-haiku-4-5  ████████████████████   1021
+  google/gemini-2.0-flash-li  ██████░░░░░░░░░░░░░░    311
+  openai/gpt-4.1-nano         ███████░░░░░░░░░░░░░    335
+  meta-llama/llama-3.1-8b-in  ██████████████░░░░░░    711
+  mistralai/ministral-8b-251  █████████░░░░░░░░░░░    482
+
+  Avg Output Tokens / Case
+  ────────────────────────────────────────────────────────────
+  anthropic/claude-haiku-4-5  ████████████████████    103
+  google/gemini-2.0-flash-li  █████░░░░░░░░░░░░░░░     24
+  openai/gpt-4.1-nano         ██████░░░░░░░░░░░░░░     33
+  meta-llama/llama-3.1-8b-in  ███████░░░░░░░░░░░░░     37
+  mistralai/ministral-8b-251  ██████████░░░░░░░░░░     54
+
+  Avg Duration / Run  (fastest first)
+  ────────────────────────────────────────────────────────────
+  meta-llama/llama-3.1-8b-in  ██░░░░░░░░░░░░░░░░░░      8.6s
+  google/gemini-2.0-flash-li  ███░░░░░░░░░░░░░░░░░     14.2s
+  openai/gpt-4.1-nano (1x)    █████░░░░░░░░░░░░░░░     20.3s
+  mistralai/ministral-8b-251  ███████░░░░░░░░░░░░░     30.1s
+  anthropic/claude-haiku-4-5  ████████████████████     1m24s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5 models · 5 total runs
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+## Running the real example
+
+Copy `.env.example` to `.env` and add your [OpenRouter](https://openrouter.ai) API key:
+
+```sh
+cp .env.example .env
+# edit .env and set OPENROUTER_API_KEY
+npx tsx examples/openrouter.test.ts
+```
+
+
+## Roadmap
+
+- [ ] Multi-run support: `.runs(n)` per scene for statistical significance
+- [ ] Suite-level runs: `agent(exec, { runs: 3 }, () => { ... })` for overall stability benchmarks
+- [ ] Additional matchers: `toBe.semanticallySimilarTo(text, threshold)`, `toBe.matchingSchema(zodSchema)`
+- [ ] JSON/file reporters for persisting reports to disk
+- [ ] Snapshot comparison: diff reports across runs to track agent regression
+- [ ] More adapters: Vercel AI SDK, OpenAI Agents SDK, raw API calls
 
 ## Development requirements
 - Node 22+
