@@ -12,14 +12,12 @@ import { agent, scene, expect } from "../../../src/index";
 import { langchain } from "../../../src/adapters";
 import { createSupportAgent } from "./agent";
 
-// Small / efficient models from five different providers.
-// All are available on OpenRouter with tool-calling support.
 const MODELS = [
-  "openai/gpt-4.1-nano",                    // OpenAI   — smallest in the 4.1 family
-  "anthropic/claude-haiku-4-5",             // Anthropic — fastest Claude tier
-  "google/gemini-2.0-flash-lite-001",           // Google   — sub-1B distilled flash
-  "meta-llama/llama-3.1-8b-instruct",       // Meta     — open-weight 8B
-  "mistralai/ministral-8b-2512",          // Mistral  — compact 7B instruction-tuned
+  "openai/gpt-4.1-nano",
+  "anthropic/claude-haiku-4-5",
+  "google/gemini-2.0-flash-lite-001",
+  "meta-llama/llama-3.1-8b-instruct",
+  "mistralai/ministral-8b-2512",
 ];
 
 async function runBenchmark(modelName: string) {
@@ -133,7 +131,6 @@ async function runBenchmark(modelName: string) {
   });
 }
 
-// Run the same 15 scenes against every model sequentially
 for (const model of MODELS) {
   await runBenchmark(model);
 }

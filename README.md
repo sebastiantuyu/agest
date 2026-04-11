@@ -1,5 +1,7 @@
 # Agest
 
+[![Build Status](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml/badge.svg)](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml)
+
 A quantitative testing library for agents using a Jest-like syntax. 
 Batteries included.
 
