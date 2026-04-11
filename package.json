@@ -1,0 +1,21 @@
+{
+  "name": "@sebastiantuyu/agest",
+  "version": "0.1.0",
+  "description": "A testing library for agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node dist/index.js",
+    "dev": "tsx examples/basic.test.ts",
+    "test:examples": "tsx examples/basic.test.ts && tsx examples/agent.test.ts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.0"
+  }
+}
