@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "A testing library for agents",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -20,7 +23,10 @@
     "test": "node dist/index.js",
     "dev": "tsx examples/basic.test.ts",
     "test:examples": "tsx examples/basic.test.ts && tsx examples/agent.test.ts",
-    "stats": "tsx src/stats.ts"
+    "stats": "tsx src/stats.ts",
+    "release:patch": "npm version patch && git push && git push --tags",
+    "release:minor": "npm version minor && git push && git push --tags",
+    "release:major": "npm version major && git push && git push --tags"
   },
   "engines": {
     "node": ">=22.0.0"
