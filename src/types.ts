@@ -27,8 +27,11 @@ export interface SceneResult {
 }
 
 export interface AgentReport {
+  name?: string;
   model?: string;
   systemPromptHash?: string;
+  promptHash?: string;
+  dimensions?: Record<string, string>;
   tools?: string[];
   successRate: number;
   failedCases: string[];

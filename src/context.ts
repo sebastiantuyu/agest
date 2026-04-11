@@ -6,8 +6,10 @@ import type {
   SceneResult,
 } from "./types";
 import { executeScene } from "./runner";
-import { formatReport, writeReport } from "./reporter";
+import { formatReport, writeReport, writeDiffEntry } from "./reporter";
 import { logger, c } from "./logger";
+import { loadConfig } from "./config";
+import { PromisePool } from "@supercharge/promise-pool";
 
 export class SceneBuilder {
   private _assertions: Array<{ field: string; fn: (value: any) => void }> = [];
@@ -27,7 +29,7 @@ export class SceneBuilder {
 export class AgentContext {
   private _scenes: SceneBuilder[] = [];
 
-  constructor(private _executor: AgentExecutor) {}
+  constructor(private _executor: AgentExecutor, private _name?: string) {}
 
   registerScene(prompt: string): SceneBuilder {
     const builder = new SceneBuilder(prompt);
@@ -36,35 +38,38 @@ export class AgentContext {
   }
 
   async execute(): Promise<AgentReport> {
+    const config = await loadConfig();
+    const parallelism = Math.max(1, config.parallelism ?? 1);
     const definitions = this._scenes.map((s) => s.toDefinition());
-    const results: SceneResult[] = [];
-    let totalDuration = 0;
+    const orderedResults: SceneResult[] = new Array(definitions.length);
     const total = definitions.length;
 
-    logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}...\n`));
+    logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}${parallelism > 1 ? c.dim(` (parallelism: ${parallelism})`) : ""}...\n`));
 
-    for (let i = 0; i < definitions.length; i++) {
-      const scene = definitions[i];
+    const tasks = definitions.map((scene, i) => async () => {
       const label = scene.prompt.length > 60
         ? scene.prompt.slice(0, 57) + "..."
         : scene.prompt;
-      logger.write(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... `);
 
       const result = await executeScene(this._executor, scene);
-      results.push(result);
-      totalDuration += result.duration;
+      orderedResults[i] = result;
 
       const ms = result.duration.toFixed(0);
       if (result.passed) {
-        logger.info(c.green(`PASS`) + c.dim(` (${ms}ms)`));
+        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.green("PASS")}${c.dim(` (${ms}ms)`)}`);
       } else {
-        logger.info(c.red(`FAIL`) + c.dim(` (${ms}ms)`));
+        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}`);
         if (result.error) {
           logger.info(`         ${c.red(result.error)}`);
         }
       }
       logger.debug(`         response: ${result.response.text?.slice(0, 120)}`);
-    }
+    });
+
+    await PromisePool.withConcurrency(parallelism).for(tasks).process((task) => task());
+
+    const results = orderedResults;
+    let totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
     logger.info("");
 
@@ -112,11 +117,22 @@ export class AgentContext {
     const firstMeta = results.find((r) => r.response.metadata)?.response
       .metadata;
 
+    const dimensions: Record<string, string> = {};
+    if (firstMeta?.model) dimensions.model = firstMeta.model;
+    if (firstMeta?.systemPrompt) dimensions.prompt = hashPromptOnly(firstMeta.systemPrompt);
+    if (firstMeta?.tools?.length) dimensions.tools = [...firstMeta.tools].sort().join(",");
+    else dimensions.tools = "none";
+
     const report: AgentReport = {
+      name: this._name,
       model: firstMeta?.model,
       systemPromptHash: firstMeta?.systemPrompt
-        ? hashPrompt(firstMeta.systemPrompt)
+        ? hashPrompt(firstMeta.systemPrompt, firstMeta.model)
         : undefined,
+      promptHash: firstMeta?.systemPrompt
+        ? hashPromptOnly(firstMeta.systemPrompt)
+        : undefined,
+      dimensions,
       tools: firstMeta?.tools,
       successRate,
       failedCases,
@@ -129,19 +145,29 @@ export class AgentContext {
       results,
     };
 
+    if (report.systemPromptHash && firstMeta?.systemPrompt) {
+      await writeDiffEntry(report.systemPromptHash, firstMeta.systemPrompt, report.tools ?? [], report.model);
+    }
+
     const formatted = formatReport(report);
     logger.info(formatted);
 
-    const filepath = await writeReport(formatted, report.timestamp);
+    const filepath = await writeReport(formatted, report.timestamp, report.name);
     logger.info(`\n${c.dim("Report saved to:")} ${c.cyan(filepath)}`);
 
     return report;
   }
 }
 
-function hashPrompt(prompt: string): string {
+function hashPrompt(prompt: string, model?: string): string {
+  const input = model ? `${model}:${prompt}` : prompt;
+  return createHash("sha256").update(input).digest("hex").slice(0, 12);
+}
+
+export function hashPromptOnly(prompt: string): string {
   return createHash("sha256").update(prompt).digest("hex").slice(0, 12);
 }
+
 
 let currentContext: AgentContext | null = null;
 

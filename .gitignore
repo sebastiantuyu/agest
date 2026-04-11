@@ -2,7 +2,8 @@
 .env
 
 # generated reports
-reports/
+.reports/
+.diff/
 
 # Optional npm cache directory
 .npm
