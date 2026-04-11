@@ -1,6 +1,6 @@
 {
   "name": "@sebastiantuyu/agest",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A testing library for agents",
   "type": "module",
   "files": [
