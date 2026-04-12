@@ -668,6 +668,9 @@ function renderScatterPlot(group: AgentGroup): string {
     };
   });
 
+  const allX = [...byModel.values()].flat().map((p) => p.x);
+  const midX = allX.length > 0 ? +((Math.min(...allX) + Math.max(...allX)) / 2).toFixed(2) : 0;
+
   const agentId = escHtml(group.label).replace(/\s+/g, "-").toLowerCase();
   const canvasId = `scatter-${agentId}`;
 
@@ -712,7 +715,52 @@ function renderScatterPlot(group: AgentGroup): string {
                 grid: { color: '#27272a' }
               }
             }
-          }
+          },
+          plugins: [{
+            id: 'quadrantLines',
+            afterDraw: function(chart) {
+              var ctx = chart.ctx;
+              var area = chart.chartArea;
+              var xScale = chart.scales.x;
+              var yScale = chart.scales.y;
+              var midXPx = xScale.getPixelForValue(${midX});
+              var midYPx = yScale.getPixelForValue(50);
+
+              ctx.save();
+              ctx.setLineDash([6, 4]);
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = 'rgba(113, 113, 122, 0.4)';
+
+              ctx.beginPath();
+              ctx.moveTo(midXPx, area.top);
+              ctx.lineTo(midXPx, area.bottom);
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.moveTo(area.left, midYPx);
+              ctx.lineTo(area.right, midYPx);
+              ctx.stroke();
+
+              ctx.setLineDash([]);
+              ctx.font = '10px ui-monospace, monospace';
+              ctx.fillStyle = 'rgba(113, 113, 122, 0.5)';
+
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'top';
+              ctx.fillText('Ideal', area.left + 8, area.top + 8);
+
+              ctx.textAlign = 'right';
+              ctx.fillText('Smart but slow', area.right - 8, area.top + 8);
+
+              ctx.textBaseline = 'bottom';
+              ctx.fillText('Dumb and slow', area.right - 8, area.bottom - 8);
+
+              ctx.textAlign = 'left';
+              ctx.fillText('Dumb and fast', area.left + 8, area.bottom - 8);
+
+              ctx.restore();
+            }
+          }]
         });
       </script>
     </div>`;

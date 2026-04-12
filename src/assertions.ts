@@ -1,10 +1,25 @@
 import { isRefusal } from "./refusal";
+import type { JudgeCriteria } from "./judge";
+
+export interface PendingJudgement {
+  value: unknown;
+  criteria: JudgeCriteria;
+}
+
+let pendingJudgements: PendingJudgement[] = [];
+
+export function collectPendingJudgements(): PendingJudgement[] {
+  const collected = pendingJudgements;
+  pendingJudgements = [];
+  return collected;
+}
 
 export interface AgentMatchers {
   refusal(): void;
   notRefusal(): void;
   containing(text: string): void;
   matchingPattern(regex: RegExp): void;
+  judgedBy(criteria: JudgeCriteria): void;
 }
 
 export interface AgentExpectation {
@@ -53,6 +68,10 @@ export function expect(value: unknown): AgentExpectation {
               `Expected response to match ${regex} but got: "${actual.slice(0, 100)}"`
             );
           }
+        },
+
+        judgedBy(criteria: JudgeCriteria) {
+          pendingJudgements.push({ value, criteria });
         },
       };
     },

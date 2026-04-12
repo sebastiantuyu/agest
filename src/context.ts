@@ -13,8 +13,20 @@ import { PromisePool } from "@supercharge/promise-pool";
 
 export class SceneBuilder {
   private _assertions: Array<{ field: string; fn: (value: any) => void }> = [];
+  private _timeout?: number;
+  private _turns?: number;
 
   constructor(private _prompt: string) {}
+
+  timeout(ms: number): SceneBuilder {
+    this._timeout = ms;
+    return this;
+  }
+
+  turns(n: number): SceneBuilder {
+    this._turns = n;
+    return this;
+  }
 
   expect(field: string, fn: (value: any) => void): SceneBuilder {
     this._assertions.push({ field, fn });
@@ -22,7 +34,7 @@ export class SceneBuilder {
   }
 
   toDefinition(): SceneDefinition {
-    return { prompt: this._prompt, assertions: [...this._assertions] };
+    return { prompt: this._prompt, assertions: [...this._assertions], timeout: this._timeout, turns: this._turns };
   }
 }
 
@@ -51,12 +63,17 @@ export class AgentContext {
         ? scene.prompt.slice(0, 57) + "..."
         : scene.prompt;
 
-      const result = await executeScene(this._executor, scene);
+      const result = await executeScene(this._executor, scene, config.timeout, config.judge, config.turns);
       orderedResults[i] = result;
 
       const ms = result.duration.toFixed(0);
       if (result.passed) {
         logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.green("PASS")}${c.dim(` (${ms}ms)`)}`);
+      } else if (result.judgement?.verdict === "partial") {
+        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.yellow("PARTIAL")}${c.dim(` (${ms}ms)`)}`);
+        if (result.error) {
+          logger.info(`         ${c.yellow(result.error)}`);
+        }
       } else {
         logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}`);
         if (result.error) {
@@ -152,7 +169,7 @@ export class AgentContext {
     const formatted = formatReport(report);
     logger.info(formatted);
 
-    const filepath = await writeReport(formatted, report.timestamp, report.name);
+    const filepath = await writeReport(formatted, report.timestamp, report.name, report.dimensions);
     logger.info(`\n${c.dim("Report saved to:")} ${c.cyan(filepath)}`);
 
     return report;

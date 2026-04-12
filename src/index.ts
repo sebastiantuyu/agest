@@ -4,14 +4,17 @@ import { AgentContext, SceneBuilder, setContext, getContext } from "./context";
 export { expect } from "./assertions";
 export { logger } from "./logger";
 export { defineConfig } from "./config";
-export type { AgestConfig } from "./config";
+export type { AgestConfig, JudgeConfig, JudgeExecutor } from "./config";
 export type { LogLevel } from "./logger";
 export type { AgentExpectation, AgentMatchers } from "./assertions";
+export type { JudgeCriteria } from "./judge";
 export type {
   AgentExecutor,
   AgentResponse,
   AgentReport,
   SceneResult,
+  JudgeVerdict,
+  JudgeResult,
 } from "./types";
 
 export interface AgentOptions {

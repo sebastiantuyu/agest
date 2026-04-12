@@ -1,4 +1,5 @@
 import { access, mkdir, writeFile } from "fs/promises";
+import { createHash } from "crypto";
 import { join } from "path";
 import type { AgentReport } from "./types";
 
@@ -63,15 +64,30 @@ export function formatReport(report: AgentReport): string {
 export async function writeReport(
   content: string,
   timestamp: string,
-  name?: string
+  name?: string,
+  dimensions?: Record<string, string>
 ): Promise<string> {
   const reportsDir = join(process.cwd(), ".reports");
   await mkdir(reportsDir, { recursive: true });
 
-  const safestamp = timestamp.replace(/[:.]/g, "-");
   const safename = name ? `-${name.replace(/[^a-zA-Z0-9_-]/g, "_")}` : "";
-  const filename = `report${safename}-${safestamp}.yaml`;
+  let filename: string;
+
+  if (dimensions && Object.keys(dimensions).length > 0) {
+    const sorted = Object.entries(dimensions).sort(([a], [b]) => a.localeCompare(b));
+    const dimHash = createHash("sha256").update(JSON.stringify(sorted)).digest("hex").slice(0, 8);
+    filename = `report${safename}-${dimHash}.yaml`;
+  } else {
+    const safestamp = timestamp.replace(/[:.]/g, "-");
+    filename = `report${safename}-${safestamp}.yaml`;
+  }
+
   const filepath = join(reportsDir, filename);
+
+  try {
+    await access(filepath);
+    console.warn(`\x1b[33m⚠ Overwriting previous report for ${name ?? "unnamed"} (same config)\x1b[0m`);
+  } catch {}
 
   await writeFile(filepath, content, "utf-8");
   return filepath;
