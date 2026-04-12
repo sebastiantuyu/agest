@@ -29,6 +29,7 @@
     "test:examples": "tsx examples/basic.test.ts && tsx examples/agent.test.ts",
     "stats": "tsx src/stats.ts",
     "preview": "tsx src/preview.ts",
+    "site:preview": "npx serve site -p 3000",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
     "release:major": "npm version major && git push && git push --tags"
