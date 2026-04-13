@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { c, logger } from "./logger";
 
 const ESC = "\x1b";
@@ -24,8 +24,8 @@ describe("c (color helpers)", () => {
 });
 
 describe("Logger", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let consoleSpy: MockInstance<typeof console.log>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
