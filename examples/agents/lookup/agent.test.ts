@@ -2,7 +2,7 @@ import { agent, scene, expect } from "../../../src/index";
 import { langchain } from "../../../src/adapters";
 import { reactAgent } from "./agent";
 
-await agent(langchain(reactAgent), () => {
+agent(langchain(reactAgent), () => {
   scene("What is the weather like today?").expect("response", (response) => {
     expect(response).toBe.refusal();
   });

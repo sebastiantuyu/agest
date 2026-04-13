@@ -35,11 +35,12 @@ export async function executeScene(
     const start = performance.now();
     let input = scene.prompt;
     for (let t = 0; t < turns; t++) {
+      let timer: ReturnType<typeof setTimeout>;
       response = await Promise.race([
-        executor(input),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Scene timed out after ${timeoutMs}ms`)), timeoutMs)
-        ),
+        executor(input).finally(() => clearTimeout(timer)),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Scene timed out after ${timeoutMs}ms`)), timeoutMs);
+        }),
       ]);
       if (response.executionError) break;
       if (t < turns - 1) input = response.text;

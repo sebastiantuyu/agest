@@ -31,7 +31,7 @@ const languageAgent = async (input: string): Promise<AgentResponse> => {
   };
 };
 
-await agent(languageAgent, () => {
+agent(languageAgent, () => {
   scene("What is the weather like today?")
     .expect("response", (response) => {
       expect(response).toBe.refusal();

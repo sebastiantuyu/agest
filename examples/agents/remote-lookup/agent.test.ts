@@ -14,7 +14,7 @@ const executor = remote(`http://localhost:${port}`, {
   },
 });
 
-await agent(executor, () => {
+agent(executor, () => {
   scene("What is the weather like today?").expect("response", (response) => {
     expect(response).toBe.refusal();
   });

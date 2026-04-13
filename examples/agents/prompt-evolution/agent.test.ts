@@ -143,25 +143,25 @@ for (const model of MODELS) {
   // v1: Minimal prompt, no tools
   //     Baseline. Expect failures on catalog lookups AND out-of-scope questions.
   console.log(`\n=== v1: Minimal prompt, no tools (${model}) ===`);
-  await agent(langchain(createAgentV1(model)), defineScenes, { name: "cookbot" });
+  agent(langchain(createAgentV1(model)), defineScenes, { name: "cookbot" });
 
   // // v2: Improved scope + refusal instructions, no tools
   // //     Out-of-scope refusals should improve. Catalog data still hallucinated.
   // console.log(`\n=== v2: Better scope + refusal instructions (${model}) ===`);
-  // await agent(langchain(createAgentV2(model)), defineScenes, { name: "cookbot" });
+  // agent(langchain(createAgentV2(model)), defineScenes, { name: "cookbot" });
 
   // v3: Refined prompt + recipe_search tool
   //     Tool lookups replace hallucination. Expect high accuracy across all categories.
   console.log(`\n=== v3: Refined prompt + recipe_search tool (${model}) ===`);
-  await agent(langchain(createAgentV3(model)), defineScenes, { name: "cookbot" });
+  agent(langchain(createAgentV3(model)), defineScenes, { name: "cookbot" });
 
   // // v4: Broader tool guidance — covers listing/filtering queries in addition to specific-recipe lookups.
   // //     Fixes vegetarian listing and "under N minutes" queries that v3 may miss.
   // console.log(`\n=== v4: Broader tool usage (listing + filtering) (${model}) ===`);
-  // await agent(langchain(createAgentV4(model)), defineScenes, { name: "cookbot" });
+  // agent(langchain(createAgentV4(model)), defineScenes, { name: "cookbot" });
 
   // // v5: Back to v3 structure with a single targeted addition for listing queries.
   // //     Avoids the numbered-list regression in v4 while still covering filter cases.
   // console.log(`\n=== v5: Targeted listing fix (no restructure) (${model}) ===`);
-  // await agent(langchain(createAgentV5(model)), defineScenes, { name: "cookbot" });
+  // agent(langchain(createAgentV5(model)), defineScenes, { name: "cookbot" });
 }

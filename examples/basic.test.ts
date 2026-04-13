@@ -12,7 +12,7 @@ const mockAgent = async (input: string): Promise<AgentResponse> => {
   };
 };
 
-await agent(mockAgent, () => {
+agent(mockAgent, () => {
   scene("Tell me about TypeScript")
     .expect("response", (response) => {
       expect(response).toBe.containing("TypeScript");

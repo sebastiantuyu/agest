@@ -127,11 +127,11 @@ for (const model of MODELS) {
   console.log(`======================================================`);
 
   // console.log(`\n=== v1: Naive prompt, no tools (${model}) ===`);
-  // await agent(langchain(createAgentV1(model)), defineScenes, { name: "loan-eligibility" });
+  // agent(langchain(createAgentV1(model)), defineScenes, { name: "loan-eligibility" });
 
   console.log(`\n=== v2: Rules in prompt, no tools (${model}) ===`);
-  await agent(langchain(createAgentV2(model)), defineScenes, { name: "loan-eligibility" });
+  agent(langchain(createAgentV2(model)), defineScenes, { name: "loan-eligibility" });
 
   console.log(`\n=== v3: Rules + applicant_lookup tool (${model}) ===`);
-  await agent(langchain(createAgentV3(model)), defineScenes, { name: "loan-eligibility" });
+  agent(langchain(createAgentV3(model)), defineScenes, { name: "loan-eligibility" });
 }
