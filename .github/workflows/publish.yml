@@ -33,7 +33,6 @@ jobs:
   publish:
     needs: test
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: read
     steps:
