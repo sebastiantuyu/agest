@@ -110,12 +110,28 @@ npx tsx examples/openrouter.test.ts
 
 ## Roadmap
 
-- [ ] Multi-run support: `.runs(n)` per scene for statistical significance
-- [ ] Suite-level runs: `agent(exec, { runs: 3 }, () => { ... })` for overall stability benchmarks
-- [ ] Additional matchers: `toBe.semanticallySimilarTo(text, threshold)`, `toBe.matchingSchema(zodSchema)`
-- [ ] JSON/file reporters for persisting reports to disk
-- [ ] Snapshot comparison: diff reports across runs to track agent regression
-- [ ] More adapters: Vercel AI SDK, OpenAI Agents SDK, raw API calls
+### Shipped
+- [x] Multi-turn support: `.turns(n)` per scene
+- [x] LLM-as-judge: `.judgedBy({ criteria, failWhen })`
+- [x] Remote HTTP adapter for framework-agnostic testing
+- [x] Report persistence to `.reports/` with YAML format
+- [x] Stats CLI with multi-model comparison and dimension analysis
+
+### Up next
+- [ ] Schema validation: `toBe.matchingSchema(zodSchema)`
+- [ ] Semantic similarity: `toBe.semanticallySimilarTo(text, threshold)`
+- [ ] Statistical runs: `.runs(n)` per scene with mean/stddev reporting
+- [ ] Vercel AI SDK adapter
+- [ ] Snapshot regression: diff current run against a saved baseline
+
+### Planned
+- [ ] Cost estimation per scene (token count to dollar cost)
+- [ ] CI/CD reporter (GitHub Actions PR comments)
+- [ ] Tool-call trajectory assertions
+- [ ] Watch mode for TDD-style iteration
+- [ ] OpenAI Agents SDK adapter
+- [ ] Webhook/n8n adapter for no-code agent sources
+- [ ] Jest/Vitest custom matcher export
 
 ## Development requirements
 - Node 22+

@@ -1,23 +1,50 @@
 <!DOCTYPE html>
 <html lang="en" class="text-zinc-100">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>agest - Build better agents through iteration</title>
-  <meta name="description" content="TypeScript-first testing library for AI agents. Jest-like syntax. Track accuracy, cost, and performance as you iterate." />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <title>agest - TDD for AI agents</title>
+  <meta name="description"
+    content="TypeScript-first testing library for AI agents. Jest-like syntax. Track accuracy, cost, and performance as you iterate." />
   <style>
-    html, body { background: #000; margin: 0; }
+    html,
+    body {
+      background: #000;
+      margin: 0;
+    }
   </style>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    .copy-btn:active { transform: scale(0.95); }
-    code .kw { color: #c084fc; }
-    code .fn { color: #60a5fa; }
-    code .str { color: #4ade80; }
-    code .cm { color: #71717a; }
-    code .prop { color: #f9a8d4; }
-    code .num { color: #fbbf24; }
+    .copy-btn:active {
+      transform: scale(0.95);
+    }
+
+    code .kw {
+      color: #c084fc;
+    }
+
+    code .fn {
+      color: #60a5fa;
+    }
+
+    code .str {
+      color: #4ade80;
+    }
+
+    code .cm {
+      color: #71717a;
+    }
+
+    code .prop {
+      color: #f9a8d4;
+    }
+
+    code .num {
+      color: #fbbf24;
+    }
 
     /* Background grid */
     body::before {
@@ -25,8 +52,8 @@
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
       background-size: 64px 64px;
       pointer-events: none;
       z-index: 0;
@@ -34,7 +61,10 @@
       -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 100%);
     }
 
-    body > * { position: relative; z-index: 1; }
+    body>* {
+      position: relative;
+      z-index: 1;
+    }
 
     /* Hero glow */
     .hero-glow {
@@ -44,23 +74,26 @@
       transform: translateX(-50%);
       width: 900px;
       height: 500px;
-      background: radial-gradient(ellipse at center, rgba(74,222,128,0.08) 0%, rgba(96,165,250,0.05) 40%, rgba(192,132,252,0.03) 60%, transparent 80%);
+      background: radial-gradient(ellipse at center, rgba(74, 222, 128, 0.08) 0%, rgba(96, 165, 250, 0.05) 40%, rgba(192, 132, 252, 0.03) 60%, transparent 80%);
       pointer-events: none;
       filter: blur(40px);
     }
 
     /* Card glow effects */
     .glow-green {
-      box-shadow: 0 0 40px -12px rgba(74,222,128,0.15), inset 0 1px 0 rgba(74,222,128,0.06);
+      box-shadow: 0 0 40px -12px rgba(74, 222, 128, 0.15), inset 0 1px 0 rgba(74, 222, 128, 0.06);
     }
+
     .glow-green:hover {
-      box-shadow: 0 0 60px -10px rgba(74,222,128,0.25), inset 0 1px 0 rgba(74,222,128,0.1);
+      box-shadow: 0 0 60px -10px rgba(74, 222, 128, 0.25), inset 0 1px 0 rgba(74, 222, 128, 0.1);
     }
+
     .glow-purple {
-      box-shadow: 0 0 40px -12px rgba(192,132,252,0.15), inset 0 1px 0 rgba(192,132,252,0.06);
+      box-shadow: 0 0 40px -12px rgba(192, 132, 252, 0.15), inset 0 1px 0 rgba(192, 132, 252, 0.06);
     }
+
     .glow-purple:hover {
-      box-shadow: 0 0 60px -10px rgba(192,132,252,0.25), inset 0 1px 0 rgba(192,132,252,0.1);
+      box-shadow: 0 0 60px -10px rgba(192, 132, 252, 0.25), inset 0 1px 0 rgba(192, 132, 252, 0.1);
     }
 
     /* Animated gradient text */
@@ -72,9 +105,17 @@
       background-clip: text;
       animation: gradientShift 6s ease-in-out infinite;
     }
+
     @keyframes gradientShift {
-      0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
+
+      0%,
+      100% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
     }
 
     /* Install command glow border */
@@ -84,16 +125,18 @@
       border: 1px solid transparent;
       background-clip: padding-box;
     }
+
     .install-cmd::before {
       content: '';
       position: absolute;
       inset: -1px;
       border-radius: 9px;
-      background: linear-gradient(135deg, rgba(74,222,128,0.3), rgba(96,165,250,0.2), rgba(192,132,252,0.3));
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.3), rgba(96, 165, 250, 0.2), rgba(192, 132, 252, 0.3));
       z-index: -1;
       opacity: 0.5;
       transition: opacity 0.4s;
     }
+
     .install-cmd:hover::before {
       opacity: 1;
     }
@@ -102,10 +145,11 @@
     .card-hover {
       transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
     }
+
     .card-hover:hover {
       border-color: #3f3f46;
       transform: translateY(-2px);
-      box-shadow: 0 8px 32px -8px rgba(0,0,0,0.5);
+      box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.5);
     }
 
     /* Feature card accent line */
@@ -113,6 +157,7 @@
       position: relative;
       overflow: hidden;
     }
+
     .feature-card::before {
       content: '';
       position: absolute;
@@ -124,6 +169,7 @@
       opacity: 0;
       transition: opacity 0.4s;
     }
+
     .feature-card:hover::before {
       opacity: 1;
     }
@@ -134,51 +180,92 @@
       transform: translateY(24px);
       transition: opacity 0.7s ease-out, transform 0.7s ease-out;
     }
+
     .reveal.visible {
       opacity: 1;
       transform: translateY(0);
     }
 
     /* Fade in */
-    .fade-in { animation: fadeIn 0.6s ease-out both; }
-    .fade-in-delay-1 { animation-delay: 0.15s; }
-    .fade-in-delay-2 { animation-delay: 0.3s; }
-    .fade-in-delay-3 { animation-delay: 0.45s; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in {
+      animation: fadeIn 0.6s ease-out both;
+    }
+
+    .fade-in-delay-1 {
+      animation-delay: 0.15s;
+    }
+
+    .fade-in-delay-2 {
+      animation-delay: 0.3s;
+    }
+
+    .fade-in-delay-3 {
+      animation-delay: 0.45s;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
 
     /* Floating badge pulse */
     .badge-pulse {
       animation: badgePulse 3s ease-in-out infinite;
     }
+
     @keyframes badgePulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.1); }
-      50% { box-shadow: 0 0 0 6px rgba(74,222,128,0); }
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.1);
+      }
+
+      50% {
+        box-shadow: 0 0 0 6px rgba(74, 222, 128, 0);
+      }
     }
 
-    .dim-tab { cursor: pointer; transition: all 0.2s; }
-    .dim-tab:hover { color: #d4d4d8; }
+    .dim-tab {
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .dim-tab:hover {
+      color: #d4d4d8;
+    }
 
     /* Smooth scroll */
-    html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+    }
   </style>
 </head>
+
 <body class="min-h-screen font-sans antialiased">
 
   <!-- Hero -->
   <section class="max-w-5xl mx-auto px-6 pt-28 pb-24 relative">
     <div class="hero-glow"></div>
     <div class="fade-in">
-      <div class="inline-block bg-zinc-900/80 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-500 mb-6 badge-pulse backdrop-blur-sm">
+      <div
+        class="inline-block bg-zinc-900/80 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-500 mb-6 badge-pulse backdrop-blur-sm">
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 animate-pulse"></span>
-        v0.1.6 &middot; early access
+        v0.2.1 &middot; early access
       </div>
       <h1 class="text-5xl sm:text-7xl font-bold tracking-tight font-mono">agest</h1>
       <p class="mt-5 text-2xl sm:text-3xl text-zinc-400 max-w-2xl leading-snug font-light">
-        Build better agents through <span class="gradient-text font-medium">iteration</span>,
-        not evaluation after the fact.
+        Every <span class="gradient-text font-medium">iteration</span> makes your agent sharper, leaner, cheaper.
       </p>
       <p class="mt-4 text-base text-zinc-500 max-w-xl leading-relaxed">
-        TypeScript-first testing library with Jest-like syntax. Track accuracy, cost, and performance as you iterate on prompts, models, and tools.
+        TDD for AI agents. Define scenes, run them against any model, and track accuracy, token cost, and performance
+        across every prompt and tool change.
       </p>
     </div>
 
@@ -187,10 +274,8 @@
         <div class="install-cmd rounded-lg px-5 py-3 font-mono text-sm text-zinc-300 flex items-center gap-4">
           <span class="text-zinc-600 select-none">$</span>
           <span>npm install @sebastiantuyu/agest</span>
-          <button
-            class="copy-btn text-zinc-600 hover:text-zinc-300 transition-colors text-xs ml-auto"
-            onclick="navigator.clipboard.writeText('npm install @sebastiantuyu/agest'); this.textContent='copied!'; setTimeout(() => this.textContent='copy', 1500)"
-          >copy</button>
+          <button class="copy-btn text-zinc-600 hover:text-zinc-300 transition-colors text-xs ml-auto"
+            onclick="navigator.clipboard.writeText('npm install @sebastiantuyu/agest'); this.textContent='copied!'; setTimeout(() => this.textContent='copy', 1500)">copy</button>
         </div>
       </div>
       <div class="flex gap-3">
@@ -271,36 +356,67 @@
   <!-- Why agest -->
   <section class="max-w-5xl mx-auto px-6 pb-24">
     <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-8">Why agest</h2>
-    <div class="grid sm:grid-cols-3 gap-4">
+    <div class="grid sm:grid-cols-2 gap-4">
 
-      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-1" style="--accent: #4ade80;">
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-1"
+        style="--accent: #4ade80;">
         <div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center mb-4">
-          <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
         </div>
         <div class="text-sm font-semibold text-zinc-200 mb-2">Iteration-first</div>
         <p class="text-sm text-zinc-500 leading-relaxed">
-          Define scenes, iterate your prompt, model, and tools. Track how accuracy changes across versions. Testing is your development loop, not a gate at the end.
+          Write scenes before your agent works. Iterate on prompts, models, and tools — watch accuracy climb version by
+          version. Testing is your dev loop, not a gate at the end.
         </p>
       </div>
 
-      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-2" style="--accent: #c084fc;">
-        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center mb-4">
-          <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-2"
+        style="--accent: #fbbf24;">
+        <div class="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center mb-4">
+          <svg class="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
         </div>
-        <div class="text-sm font-semibold text-zinc-200 mb-2">Quantitative benchmarking</div>
+        <div class="text-sm font-semibold text-zinc-200 mb-2">Cost-aware development</div>
         <p class="text-sm text-zinc-500 leading-relaxed">
-          Token costs, duration, success rates per scene. Dimension analysis shows exactly which change moved the needle.
+          Track token usage per scene, per model, per prompt version. Know when your v2 prompt costs 2x but only gained
+          5% accuracy — and decide if it's worth it before shipping.
         </p>
       </div>
 
-      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-3" style="--accent: #60a5fa;">
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-2"
+        style="--accent: #c084fc;">
+        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center mb-4">
+          <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <div class="text-sm font-semibold text-zinc-200 mb-2">Dimension analysis</div>
+        <p class="text-sm text-zinc-500 leading-relaxed">
+          Controlled comparisons isolate exactly what moved the needle — the prompt tweak, the model swap, or the new
+          tool. No more guessing which change made the difference.
+        </p>
+      </div>
+
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-3"
+        style="--accent: #60a5fa;">
         <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4">
-          <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+          <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
         </div>
         <div class="text-sm font-semibold text-zinc-200 mb-2">Framework-agnostic</div>
         <p class="text-sm text-zinc-500 leading-relaxed">
-          Simple <code class="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">(input) =&gt; Promise&lt;Response&gt;</code> executor.
-          Works with LangChain, Vercel AI SDK, raw APIs, or any agent source.
+          Simple <code
+            class="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">(input) =&gt; Promise&lt;Response&gt;</code>
+          executor.
+          Works with LangChain, raw HTTP, or any agent — even n8n workflows.
         </p>
       </div>
 
@@ -310,7 +426,8 @@
   <!-- Charts Section -->
   <section class="max-w-5xl mx-auto px-6 pb-24 reveal">
     <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-2">Visual reports</h2>
-    <p class="text-sm text-zinc-500 mb-8">Compare models, track prompt evolution, and find the accuracy-vs-cost sweet spot — all generated from your test runs.</p>
+    <p class="text-sm text-zinc-500 mb-8">Compare models, track prompt evolution, and find the accuracy-vs-cost sweet
+      spot — all generated from your test runs.</p>
 
     <div class="grid md:grid-cols-2 gap-4 mb-4">
       <!-- Success rate bar chart -->
@@ -365,7 +482,9 @@
   <!-- Stats terminal preview -->
   <section class="max-w-5xl mx-auto px-6 pb-24 reveal">
     <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-2">CLI reports</h2>
-    <p class="text-sm text-zinc-500 mb-6">Or keep it terminal-native. <code class="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">pnpm stats</code> gives you the full picture.</p>
+    <p class="text-sm text-zinc-500 mb-6">Or keep it terminal-native. <code
+        class="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">pnpm stats</code> gives you the full picture.
+    </p>
     <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden card-hover">
       <div class="px-4 py-2.5 border-b border-zinc-800 flex items-center gap-2">
         <div class="flex gap-1.5">
@@ -415,12 +534,124 @@
     </div>
   </section>
 
+  <!-- Roadmap -->
+  <section class="max-w-5xl mx-auto px-6 pb-24">
+    <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-8">Roadmap</h2>
+
+    <div class="grid sm:grid-cols-3 gap-4">
+
+      <!-- Shipped -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-2 h-2 rounded-full bg-green-400"></div>
+          <span class="text-sm font-semibold text-zinc-200">Shipped</span>
+        </div>
+        <ul class="space-y-2.5 text-sm text-zinc-500">
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5 shrink-0">&#10003;</span>
+            <span>Multi-turn support <code
+                class="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">.turns(n)</code></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5 shrink-0">&#10003;</span>
+            <span>LLM-as-judge <code class="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">.judgedBy()</code></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5 shrink-0">&#10003;</span>
+            <span>Remote HTTP adapter</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5 shrink-0">&#10003;</span>
+            <span>Report persistence <code
+                class="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">.reports/</code></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5 shrink-0">&#10003;</span>
+            <span>Stats CLI with dimension analysis</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Up next -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-2 h-2 rounded-full bg-yellow-400"></div>
+          <span class="text-sm font-semibold text-zinc-200">Up next</span>
+        </div>
+        <ul class="space-y-2.5 text-sm text-zinc-500">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Schema validation <code
+                class="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">.matchingSchema(zod)</code></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Semantic similarity <code
+                class="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">.semanticallySimilarTo()</code></span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Statistical runs <code class="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">.runs(n)</code> with
+              mean/stddev</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Vercel AI SDK adapter</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Snapshot regression detection</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Planned -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-2 h-2 rounded-full bg-zinc-600"></div>
+          <span class="text-sm font-semibold text-zinc-200">Planned</span>
+        </div>
+        <ul class="space-y-2.5 text-sm text-zinc-500">
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Cost estimation per scene</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>CI/CD reporter (GitHub Actions)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Tool-call trajectory assertions</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Watch mode for TDD-style iteration</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Webhook/n8n adapter</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-zinc-700 mt-0.5 shrink-0">&#9675;</span>
+            <span>Jest/Vitest matcher export</span>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
   <!-- Footer -->
-  <footer class="max-w-5xl mx-auto px-6 py-12 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
-    <span>agest by <a href="https://sebastiantuyu.com" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">sebastiantuyu</a></span>
+  <footer
+    class="max-w-5xl mx-auto px-6 py-12 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
+    <span>agest by <a href="https://sebastiantuyu.com" target="_blank"
+        class="text-zinc-500 hover:text-zinc-300 transition-colors">sebastiantuyu</a></span>
     <div class="flex gap-6">
-      <a href="https://github.com/sebastiantuyu/agest" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">GitHub</a>
-      <a href="https://www.npmjs.com/package/@sebastiantuyu/agest" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">npm</a>
+      <a href="https://github.com/sebastiantuyu/agest" target="_blank"
+        class="text-zinc-500 hover:text-zinc-300 transition-colors">GitHub</a>
+      <a href="https://www.npmjs.com/package/@sebastiantuyu/agest" target="_blank"
+        class="text-zinc-500 hover:text-zinc-300 transition-colors">npm</a>
     </div>
   </footer>
 
@@ -549,4 +780,5 @@
   </script>
 
 </body>
+
 </html>
