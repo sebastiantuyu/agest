@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-zinc-950 text-zinc-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>agest preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    function switchDim(agent, dim) {
+      document.querySelectorAll('.chart-view[data-agent="' + agent + '"]').forEach(el => {
+        el.style.display = el.dataset.dim === dim ? 'block' : 'none';
+      });
+      document.querySelectorAll('.dim-tab[data-agent="' + agent + '"]').forEach(el => {
+        if (el.dataset.dim === dim) {
+          el.className = el.className.replace('bg-zinc-800/50 text-zinc-500', 'bg-zinc-700 text-zinc-200');
+        } else {
+          el.className = el.className.replace('bg-zinc-700 text-zinc-200', 'bg-zinc-800/50 text-zinc-500');
+        }
+      });
+    }
+  </script>
+</head>
+<body class="min-h-screen font-mono p-8">
+  <div class="max-w-4xl mx-auto">
+
+    <header class="mb-10">
+      <h1 class="text-2xl font-bold tracking-tight">agest</h1>
+      <p class="text-zinc-500 text-sm mt-1">8 reports &middot; generated 4/11/2026, 2:02:44 PM</p>
+    </header>
+
+    
+  <section class="mb-12">
+    <h2 class="text-base font-semibold mb-4 text-zinc-400 uppercase tracking-widest">cookbot</h2>
+
+    
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-4">
+      <div class="flex items-center justify-between mb-5">
+        <span class="text-xs text-zinc-600 uppercase tracking-wider">success rate</span>
+        <div class="flex gap-1.5">
+          <button
+        class="dim-tab px-3 py-1.5 text-xs rounded-md transition-colors bg-zinc-700 text-zinc-200"
+        data-agent="cookbot"
+        data-dim="model"
+        onclick="switchDim('cookbot', 'model')"
+      >model</button>
+<button
+        class="dim-tab px-3 py-1.5 text-xs rounded-md transition-colors bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+        data-agent="cookbot"
+        data-dim="prompt"
+        onclick="switchDim('cookbot', 'prompt')"
+      >prompt</button>
+<button
+        class="dim-tab px-3 py-1.5 text-xs rounded-md transition-colors bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"
+        data-agent="cookbot"
+        data-dim="tools"
+        onclick="switchDim('cookbot', 'tools')"
+      >tools</button>
+        </div>
+      </div>
+      <div class="chart-view" data-agent="cookbot" data-dim="model" style="display:block">
+      <div class="mb-4">
+        <div class="text-xs text-zinc-600 uppercase tracking-wider mb-1">grouped by model</div>
+      </div>
+      <div style="position:relative;height:280px">
+        <canvas id="bar-cookbot-model"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('bar-cookbot-model'), {
+          type: 'bar',
+          data: { labels: ["gemini-2.0-flash","ministral-8b-251","llama-3.1-8b-ins","gpt-oss-20b"], datasets: [{"label":"prompt: v1, tools: none","data":[58,67,58,58],"backgroundColor":"#f87171","borderColor":"#f87171","borderWidth":0,"borderRadius":4},{"label":"prompt: v2, tools: v2","data":[67,92,75,92],"backgroundColor":"#fb923c","borderColor":"#fb923c","borderWidth":0,"borderRadius":4}] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#a1a1aa', font: { family: 'ui-monospace, monospace', size: 10 }, boxWidth: 12, padding: 16 } },
+              tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y + '%'; } } }
+            },
+            scales: {
+              x: { ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 } }, grid: { color: '#27272a' } },
+              y: { min: 0, max: 100, ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 }, callback: function(v) { return v + '%'; } }, grid: { color: '#27272a' } }
+            }
+          }
+        });
+      </script>
+      <div class="mt-4 pt-3 border-t border-zinc-800/50 space-y-1">
+        <div class="text-[10px]"><span class="text-zinc-500">model:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">google/gemini-2.0-flash-lit…</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">mistralai/ministral-8b-2512</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v3</span> <span class="text-zinc-700">meta-llama/llama-3.1-8b-ins…</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v4</span> <span class="text-zinc-700">openai/gpt-oss-20b</span></div>
+<div class="text-[10px]"><span class="text-zinc-500">prompt:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">20c43e32fa78</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">7874169a6eda</span></div>
+<div class="text-[10px]"><span class="text-zinc-500">tools:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">none</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">recipe_search</span></div>
+      </div>
+    </div>
+<div class="chart-view" data-agent="cookbot" data-dim="prompt" style="display:none">
+    <div class="mb-4">
+      <div class="text-xs text-zinc-600 uppercase tracking-wider mb-1">grouped by prompt</div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="px-4 py-2 text-xs text-zinc-500 font-medium text-left">prompt</th>
+            <th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="google/gemini-2.0-flash-lite-001">gemini-2.0-flash</th>
+<th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="mistralai/ministral-8b-2512">ministral-8b-251</th>
+<th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="meta-llama/llama-3.1-8b-instruct">llama-3.1-8b-ins</th>
+<th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="openai/gpt-oss-20b">gpt-oss-20b</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-zinc-800/50">
+        <td class="px-4 py-2.5">
+          <div class="text-xs text-zinc-300 font-medium">v1</div>
+          <div class="flex gap-2 mt-0.5"><span class="text-[10px] text-zinc-600">tools: none</span></div>
+        </td>
+        <td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:58.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">58%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:67.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">67%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:58.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">58%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:58.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">58%</span>
+            </div>
+          </td>
+      </tr>
+<tr class="border-t border-zinc-800/50">
+        <td class="px-4 py-2.5">
+          <div class="text-xs text-zinc-300 font-medium">v2</div>
+          <div class="flex gap-2 mt-0.5"><span class="text-[10px] text-zinc-600">tools: v2</span></div>
+        </td>
+        <td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:67.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">67%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:92.0%;background:#4ade80"></div>
+              </div>
+              <span class="text-sm font-medium text-green-400 w-12 text-right">92%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:75.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">75%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:92.0%;background:#4ade80"></div>
+              </div>
+              <span class="text-sm font-medium text-green-400 w-12 text-right">92%</span>
+            </div>
+          </td>
+      </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-4 pt-3 border-t border-zinc-800/50 space-y-1">
+      <div class="text-[10px]"><span class="text-zinc-500">model:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">google/gemini-2.0-flash-lit…</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">mistralai/ministral-8b-2512</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v3</span> <span class="text-zinc-700">meta-llama/llama-3.1-8b-ins…</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v4</span> <span class="text-zinc-700">openai/gpt-oss-20b</span></div>
+<div class="text-[10px]"><span class="text-zinc-500">prompt:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">20c43e32fa78</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">7874169a6eda</span></div>
+<div class="text-[10px]"><span class="text-zinc-500">tools:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">none</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">recipe_search</span></div>
+    </div>
+  </div>
+<div class="chart-view" data-agent="cookbot" data-dim="tools" style="display:none">
+    <div class="mb-4">
+      <div class="text-xs text-zinc-600 uppercase tracking-wider mb-1">grouped by tools</div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-zinc-800">
+            <th class="px-4 py-2 text-xs text-zinc-500 font-medium text-left">tools</th>
+            <th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="google/gemini-2.0-flash-lite-001">gemini-2.0-flash</th>
+<th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="mistralai/ministral-8b-2512">ministral-8b-251</th>
+<th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="meta-llama/llama-3.1-8b-instruct">llama-3.1-8b-ins</th>
+<th class="px-4 py-2 text-xs text-zinc-400 font-medium text-left" title="openai/gpt-oss-20b">gpt-oss-20b</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-zinc-800/50">
+        <td class="px-4 py-2.5">
+          <div class="text-xs text-zinc-300 font-medium">none</div>
+          <div class="flex gap-2 mt-0.5"><span class="text-[10px] text-zinc-600">prompt: v1</span></div>
+        </td>
+        <td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:58.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">58%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:67.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">67%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:58.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">58%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:58.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">58%</span>
+            </div>
+          </td>
+      </tr>
+<tr class="border-t border-zinc-800/50">
+        <td class="px-4 py-2.5">
+          <div class="text-xs text-zinc-300 font-medium">v2</div>
+          <div class="flex gap-2 mt-0.5"><span class="text-[10px] text-zinc-600">prompt: v2</span></div>
+        </td>
+        <td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:67.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">67%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:92.0%;background:#4ade80"></div>
+              </div>
+              <span class="text-sm font-medium text-green-400 w-12 text-right">92%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:75.0%;background:#facc15"></div>
+              </div>
+              <span class="text-sm font-medium text-yellow-400 w-12 text-right">75%</span>
+            </div>
+          </td>
+<td class="px-4 py-2">
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
+                <div class="h-2 rounded" style="width:92.0%;background:#4ade80"></div>
+              </div>
+              <span class="text-sm font-medium text-green-400 w-12 text-right">92%</span>
+            </div>
+          </td>
+      </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-4 pt-3 border-t border-zinc-800/50 space-y-1">
+      <div class="text-[10px]"><span class="text-zinc-500">model:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">google/gemini-2.0-flash-lit…</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">mistralai/ministral-8b-2512</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v3</span> <span class="text-zinc-700">meta-llama/llama-3.1-8b-ins…</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v4</span> <span class="text-zinc-700">openai/gpt-oss-20b</span></div>
+<div class="text-[10px]"><span class="text-zinc-500">prompt:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">20c43e32fa78</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">7874169a6eda</span></div>
+<div class="text-[10px]"><span class="text-zinc-500">tools:</span> <span class="text-zinc-600">v1</span> <span class="text-zinc-700">none</span>&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span class="text-zinc-600">v2</span> <span class="text-zinc-700">recipe_search</span></div>
+    </div>
+  </div>
+    </div>
+    
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-4">
+      <div class="mb-4">
+        <span class="text-xs text-zinc-600 uppercase tracking-wider">accuracy vs speed</span>
+      </div>
+      <div style="position:relative;height:320px">
+        <canvas id="scatter-cookbot"></canvas>
+      </div>
+      <script>
+        new Chart(document.getElementById('scatter-cookbot'), {
+          type: 'scatter',
+          data: { datasets: [{"label":"gemini-2.0-flash-lite-00","data":[{"x":1.7,"y":58,"label":"prompt: 20c43e32fa78, tools: none"},{"x":0.89,"y":67,"label":"prompt: 7874169a6eda, tools: recipe_search"}],"backgroundColor":"#f87171","borderColor":"#fca5a5","pointRadius":7,"pointHoverRadius":9},{"label":"ministral-8b-2512","data":[{"x":3.04,"y":67,"label":"prompt: 20c43e32fa78, tools: none"},{"x":1.15,"y":92,"label":"prompt: 7874169a6eda, tools: recipe_search"}],"backgroundColor":"#fb923c","borderColor":"#fdba74","pointRadius":7,"pointHoverRadius":9},{"label":"llama-3.1-8b-instruct","data":[{"x":0.49,"y":58,"label":"prompt: 20c43e32fa78, tools: none"},{"x":0.62,"y":75,"label":"prompt: 7874169a6eda, tools: recipe_search"}],"backgroundColor":"#facc15","borderColor":"#fde047","pointRadius":7,"pointHoverRadius":9},{"label":"gpt-oss-20b","data":[{"x":1.46,"y":58,"label":"prompt: 20c43e32fa78, tools: none"},{"x":0.73,"y":92,"label":"prompt: 7874169a6eda, tools: recipe_search"}],"backgroundColor":"#4ade80","borderColor":"#86efac","pointRadius":7,"pointHoverRadius":9}] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#a1a1aa', font: { family: 'ui-monospace, monospace', size: 10 }, boxWidth: 12, padding: 16 } },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var p = ctx.raw;
+                    var lines = [ctx.dataset.label + ': ' + p.y + '% accuracy, ' + p.x.toFixed(1) + 's/case'];
+                    if (p.label) lines.push(p.label);
+                    return lines;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: 'avg duration per case (s)', color: '#71717a', font: { family: 'ui-monospace, monospace', size: 11 } },
+                ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 } },
+                grid: { color: '#27272a' }
+              },
+              y: {
+                min: 0, max: 100,
+                title: { display: true, text: 'accuracy (%)', color: '#71717a', font: { family: 'ui-monospace, monospace', size: 11 } },
+                ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 }, callback: function(v) { return v + '%'; } },
+                grid: { color: '#27272a' }
+              }
+            }
+          }
+        });
+      </script>
+    </div>
+  </section>
+
+    <footer class="mt-16 border-t border-zinc-800 pt-6 text-xs text-zinc-600">
+      agest by <a href="https://sebastiantuyu.com" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">sebastiantuyu</a>
+    </footer>
+
+  </div>
+</body>
+</html>

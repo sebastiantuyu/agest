@@ -1,4 +1,9 @@
-import type { AgentExecutor, AgentResponse, SceneDefinition, SceneResult } from "./types";
+import type { AgentExecutor, AgentResponse, JudgeResult, SceneDefinition, SceneResult } from "./types";
+import type { JudgeConfig } from "./config";
+import { collectPendingJudgements } from "./assertions";
+import { callJudge, resolveJudgeExecutor } from "./judge";
+
+const DEFAULT_SCENE_TIMEOUT = 10_000;
 
 export function extractField(response: AgentResponse, field: string): unknown {
   switch (field) {
@@ -15,14 +20,30 @@ export function extractField(response: AgentResponse, field: string): unknown {
 
 export async function executeScene(
   executor: AgentExecutor,
-  scene: SceneDefinition
+  scene: SceneDefinition,
+  globalTimeout?: number,
+  judgeConfig?: JudgeConfig,
+  globalTurns?: number,
 ): Promise<SceneResult> {
-  let response: AgentResponse;
+  let response: AgentResponse = { text: "" };
   let duration: number;
+
+  const timeoutMs = scene.timeout ?? globalTimeout ?? DEFAULT_SCENE_TIMEOUT;
+  const turns = scene.turns ?? globalTurns ?? 1;
 
   try {
     const start = performance.now();
-    response = await executor(scene.prompt);
+    let input = scene.prompt;
+    for (let t = 0; t < turns; t++) {
+      response = await Promise.race([
+        executor(input),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Scene timed out after ${timeoutMs}ms`)), timeoutMs)
+        ),
+      ]);
+      if (response.executionError) break;
+      if (t < turns - 1) input = response.text;
+    }
     duration = performance.now() - start;
   } catch (err) {
     return {
@@ -46,6 +67,7 @@ export async function executeScene(
 
   let passed = true;
   let error: string | undefined;
+  let judgement: JudgeResult | undefined;
 
   for (const assertion of scene.assertions) {
     try {
@@ -58,5 +80,31 @@ export async function executeScene(
     }
   }
 
-  return { prompt: scene.prompt, response, duration, passed, error };
+  const pending = collectPendingJudgements();
+
+  if (pending.length > 0 && passed) {
+    if (!judgeConfig) {
+      passed = false;
+      error = "judgedBy() requires a judge configured in agest.config.ts";
+    } else {
+      const judgeExecutor = resolveJudgeExecutor(judgeConfig);
+      for (const p of pending) {
+        try {
+          const result = await callJudge(String(p.value), p.criteria, judgeExecutor);
+          judgement = result;
+          if (result.verdict === "fail" || result.verdict === "partial") {
+            passed = false;
+            error = `Judge verdict: ${result.verdict} — ${result.reasoning}`;
+            break;
+          }
+        } catch (err) {
+          passed = false;
+          error = `Judge error: ${(err as Error).message}`;
+          break;
+        }
+      }
+    }
+  }
+
+  return { prompt: scene.prompt, response, duration, passed, error, judgement };
 }

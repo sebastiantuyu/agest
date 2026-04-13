@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en" class="text-zinc-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>agest - Build better agents through iteration</title>
+  <meta name="description" content="TypeScript-first testing library for AI agents. Jest-like syntax. Track accuracy, cost, and performance as you iterate." />
+  <style>
+    html, body { background: #000; margin: 0; }
+  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .copy-btn:active { transform: scale(0.95); }
+    code .kw { color: #c084fc; }
+    code .fn { color: #60a5fa; }
+    code .str { color: #4ade80; }
+    code .cm { color: #71717a; }
+    code .prop { color: #f9a8d4; }
+    code .num { color: #fbbf24; }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 64px 64px;
+      pointer-events: none;
+      z-index: 0;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 100%);
+    }
+
+    body > * { position: relative; z-index: 1; }
+
+    /* Hero glow */
+    .hero-glow {
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 500px;
+      background: radial-gradient(ellipse at center, rgba(74,222,128,0.08) 0%, rgba(96,165,250,0.05) 40%, rgba(192,132,252,0.03) 60%, transparent 80%);
+      pointer-events: none;
+      filter: blur(40px);
+    }
+
+    /* Card glow effects */
+    .glow-green {
+      box-shadow: 0 0 40px -12px rgba(74,222,128,0.15), inset 0 1px 0 rgba(74,222,128,0.06);
+    }
+    .glow-green:hover {
+      box-shadow: 0 0 60px -10px rgba(74,222,128,0.25), inset 0 1px 0 rgba(74,222,128,0.1);
+    }
+    .glow-purple {
+      box-shadow: 0 0 40px -12px rgba(192,132,252,0.15), inset 0 1px 0 rgba(192,132,252,0.06);
+    }
+    .glow-purple:hover {
+      box-shadow: 0 0 60px -10px rgba(192,132,252,0.25), inset 0 1px 0 rgba(192,132,252,0.1);
+    }
+
+    /* Animated gradient text */
+    .gradient-text {
+      background: linear-gradient(135deg, #4ade80 0%, #60a5fa 25%, #c084fc 50%, #4ade80 75%, #60a5fa 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradientShift 6s ease-in-out infinite;
+    }
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    /* Install command glow border */
+    .install-cmd {
+      position: relative;
+      background: #18181b;
+      border: 1px solid transparent;
+      background-clip: padding-box;
+    }
+    .install-cmd::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, rgba(74,222,128,0.3), rgba(96,165,250,0.2), rgba(192,132,252,0.3));
+      z-index: -1;
+      opacity: 0.5;
+      transition: opacity 0.4s;
+    }
+    .install-cmd:hover::before {
+      opacity: 1;
+    }
+
+    /* Card hover with subtle glow */
+    .card-hover {
+      transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+    }
+    .card-hover:hover {
+      border-color: #3f3f46;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px -8px rgba(0,0,0,0.5);
+    }
+
+    /* Feature card accent line */
+    .feature-card {
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+
+    /* Scroll reveal */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Fade in */
+    .fade-in { animation: fadeIn 0.6s ease-out both; }
+    .fade-in-delay-1 { animation-delay: 0.15s; }
+    .fade-in-delay-2 { animation-delay: 0.3s; }
+    .fade-in-delay-3 { animation-delay: 0.45s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Floating badge pulse */
+    .badge-pulse {
+      animation: badgePulse 3s ease-in-out infinite;
+    }
+    @keyframes badgePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.1); }
+      50% { box-shadow: 0 0 0 6px rgba(74,222,128,0); }
+    }
+
+    .dim-tab { cursor: pointer; transition: all 0.2s; }
+    .dim-tab:hover { color: #d4d4d8; }
+
+    /* Smooth scroll */
+    html { scroll-behavior: smooth; }
+  </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+
+  <!-- Hero -->
+  <section class="max-w-5xl mx-auto px-6 pt-28 pb-24 relative">
+    <div class="hero-glow"></div>
+    <div class="fade-in">
+      <div class="inline-block bg-zinc-900/80 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-500 mb-6 badge-pulse backdrop-blur-sm">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-400 mr-1.5 animate-pulse"></span>
+        v0.1.6 &middot; early access
+      </div>
+      <h1 class="text-5xl sm:text-7xl font-bold tracking-tight font-mono">agest</h1>
+      <p class="mt-5 text-2xl sm:text-3xl text-zinc-400 max-w-2xl leading-snug font-light">
+        Build better agents through <span class="gradient-text font-medium">iteration</span>,
+        not evaluation after the fact.
+      </p>
+      <p class="mt-4 text-base text-zinc-500 max-w-xl leading-relaxed">
+        TypeScript-first testing library with Jest-like syntax. Track accuracy, cost, and performance as you iterate on prompts, models, and tools.
+      </p>
+    </div>
+
+    <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 fade-in fade-in-delay-1">
+      <div class="relative group">
+        <div class="install-cmd rounded-lg px-5 py-3 font-mono text-sm text-zinc-300 flex items-center gap-4">
+          <span class="text-zinc-600 select-none">$</span>
+          <span>npm install @sebastiantuyu/agest</span>
+          <button
+            class="copy-btn text-zinc-600 hover:text-zinc-300 transition-colors text-xs ml-auto"
+            onclick="navigator.clipboard.writeText('npm install @sebastiantuyu/agest'); this.textContent='copied!'; setTimeout(() => this.textContent='copy', 1500)"
+          >copy</button>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <a href="https://github.com/sebastiantuyu/agest" target="_blank"
+          class="relative bg-zinc-100 text-zinc-950 px-5 py-3 rounded-lg text-sm font-medium hover:bg-white transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:-translate-y-0.5">
+          GitHub
+        </a>
+        <a href="#docs"
+          class="bg-zinc-800/80 text-zinc-300 px-5 py-3 rounded-lg text-sm font-medium hover:bg-zinc-700 transition-all border border-zinc-700/50 hover:-translate-y-0.5">
+          Docs
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code Example -->
+  <section class="max-w-5xl mx-auto px-6 pb-24">
+    <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-6">How it looks</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden card-hover glow-green">
+        <div class="px-4 py-2.5 border-b border-zinc-800 flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <div class="w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+          </div>
+          <span class="text-xs text-zinc-500 ml-2">agent.test.ts</span>
+        </div>
+        <pre class="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto"><code><span class="kw">import</span> { agent, scene, expect } <span class="kw">from</span> <span class="str">"@sebastiantuyu/agest"</span>;
+
+<span class="kw">await</span> <span class="fn">agent</span>(executor, () => {
+  <span class="fn">scene</span>(<span class="str">"What is the weather today?"</span>)
+    .<span class="fn">expect</span>(<span class="str">"response"</span>, (r) => {
+      <span class="fn">expect</span>(r).<span class="prop">toBe</span>.<span class="fn">refusal</span>();
+    });
+
+  <span class="fn">scene</span>(<span class="str">"Say 'hello' in Japanese?"</span>)
+    .<span class="fn">expect</span>(<span class="str">"response"</span>, (r) => {
+      <span class="fn">expect</span>(r).<span class="prop">toBe</span>.<span class="fn">notRefusal</span>();
+      <span class="fn">expect</span>(r).<span class="prop">toBe</span>.<span class="fn">containing</span>(<span class="str">"konnichiwa"</span>);
+    });
+
+  <span class="fn">scene</span>(<span class="str">"Explain quantum physics simply"</span>)
+    .<span class="fn">expect</span>(<span class="str">"response"</span>, (r) => {
+      <span class="fn">expect</span>(r).<span class="prop">toBe</span>.<span class="fn">judgedBy</span>({
+        <span class="prop">criteria</span>: <span class="str">"Response must be in the context of language learning"</span>,
+        <span class="prop">failWhen</span>: <span class="str">"Response explains physics instead of refusing or redirecting"</span>,
+      });
+    });
+});</code></pre>
+      </div>
+
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden card-hover">
+        <div class="px-4 py-2.5 border-b border-zinc-800 flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <div class="w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-zinc-700"></div>
+          </div>
+          <span class="text-xs text-zinc-500 ml-2">report output</span>
+        </div>
+        <pre class="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto text-zinc-400"><code><span class="text-zinc-300">agent:</span>
+    model: <span class="str">"openai/gpt-4.1-mini"</span>
+    system_prompt: <span class="cm">a3f8c2e1</span>
+    tools: <span class="cm">[translate, lookup]</span>
+    success_rate: <span class="text-green-400 font-semibold">0.93</span>
+    failed_cases:
+        <span class="cm">- "What is the weather today?"</span>
+    timestamp: <span class="str">"2025-01-01T00:00:00.000Z"</span>
+    duration: <span class="num">3421</span>
+    total_cases: <span class="num">15</span>
+    avg_input_tokens: <span class="num">87</span>
+    avg_output_tokens: <span class="num">34</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why agest -->
+  <section class="max-w-5xl mx-auto px-6 pb-24">
+    <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-8">Why agest</h2>
+    <div class="grid sm:grid-cols-3 gap-4">
+
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-1" style="--accent: #4ade80;">
+        <div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center mb-4">
+          <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        </div>
+        <div class="text-sm font-semibold text-zinc-200 mb-2">Iteration-first</div>
+        <p class="text-sm text-zinc-500 leading-relaxed">
+          Define scenes, iterate your prompt, model, and tools. Track how accuracy changes across versions. Testing is your development loop, not a gate at the end.
+        </p>
+      </div>
+
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-2" style="--accent: #c084fc;">
+        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center mb-4">
+          <svg class="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+        </div>
+        <div class="text-sm font-semibold text-zinc-200 mb-2">Quantitative benchmarking</div>
+        <p class="text-sm text-zinc-500 leading-relaxed">
+          Token costs, duration, success rates per scene. Dimension analysis shows exactly which change moved the needle.
+        </p>
+      </div>
+
+      <div class="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 card-hover feature-card fade-in fade-in-delay-3" style="--accent: #60a5fa;">
+        <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4">
+          <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+        </div>
+        <div class="text-sm font-semibold text-zinc-200 mb-2">Framework-agnostic</div>
+        <p class="text-sm text-zinc-500 leading-relaxed">
+          Simple <code class="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">(input) =&gt; Promise&lt;Response&gt;</code> executor.
+          Works with LangChain, Vercel AI SDK, raw APIs, or any agent source.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Charts Section -->
+  <section class="max-w-5xl mx-auto px-6 pb-24 reveal">
+    <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-2">Visual reports</h2>
+    <p class="text-sm text-zinc-500 mb-8">Compare models, track prompt evolution, and find the accuracy-vs-cost sweet spot — all generated from your test runs.</p>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-4">
+      <!-- Success rate bar chart -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover glow-purple">
+        <div class="flex items-center justify-between mb-5">
+          <span class="text-xs text-zinc-500 uppercase tracking-wider">success rate by model</span>
+          <div class="flex gap-1.5">
+            <span class="dim-tab px-2.5 py-1 text-[10px] rounded-md bg-zinc-700 text-zinc-200">prompt v1</span>
+            <span class="dim-tab px-2.5 py-1 text-[10px] rounded-md bg-zinc-800/50 text-zinc-500">prompt v2</span>
+          </div>
+        </div>
+        <div style="position:relative;height:260px">
+          <canvas id="chart-success"></canvas>
+        </div>
+      </div>
+
+      <!-- Scatter: accuracy vs speed -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover">
+        <div class="mb-5">
+          <span class="text-xs text-zinc-500 uppercase tracking-wider">accuracy vs speed</span>
+        </div>
+        <div style="position:relative;height:260px">
+          <canvas id="chart-scatter"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <!-- Token usage comparison -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover">
+        <div class="mb-5">
+          <span class="text-xs text-zinc-500 uppercase tracking-wider">avg tokens per case</span>
+        </div>
+        <div style="position:relative;height:240px">
+          <canvas id="chart-tokens"></canvas>
+        </div>
+      </div>
+
+      <!-- Prompt evolution line chart -->
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-5 card-hover glow-green">
+        <div class="mb-5">
+          <span class="text-xs text-zinc-500 uppercase tracking-wider">prompt evolution</span>
+          <div class="text-[10px] text-zinc-600 mt-1">accuracy over 4 prompt iterations</div>
+        </div>
+        <div style="position:relative;height:240px">
+          <canvas id="chart-evolution"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats terminal preview -->
+  <section class="max-w-5xl mx-auto px-6 pb-24 reveal">
+    <h2 class="text-xs text-zinc-600 uppercase tracking-widest mb-2">CLI reports</h2>
+    <p class="text-sm text-zinc-500 mb-6">Or keep it terminal-native. <code class="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">pnpm stats</code> gives you the full picture.</p>
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden card-hover">
+      <div class="px-4 py-2.5 border-b border-zinc-800 flex items-center gap-2">
+        <div class="flex gap-1.5">
+          <div class="w-2.5 h-2.5 rounded-full bg-red-500/60"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></div>
+          <div class="w-2.5 h-2.5 rounded-full bg-green-500/60"></div>
+        </div>
+        <span class="text-xs text-zinc-500 ml-2">terminal</span>
+      </div>
+      <pre class="p-5 text-[13px] leading-relaxed font-mono overflow-x-auto text-zinc-400"><code><span class="text-zinc-300">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AGEST STATS  ·  12 reports found  ·  loan-eligibility
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  Success Rate
+  ────────────────────────────────────────────────────────────
+  anthropic/claude-sonnet-4   <span class="text-green-400">████████████████████</span>   <span class="text-green-400">100%</span>
+  anthropic/claude-haiku-4-5  <span class="text-green-400">███████████████████░</span>    <span class="text-green-400">93%</span>
+  google/gemini-2.0-flash     <span class="text-green-400">███████████████████░</span>    <span class="text-green-400">93%</span>
+  openai/gpt-4.1-mini         <span class="text-green-400">██████████████████░░</span>    <span class="text-green-400">87%</span>
+  openai/gpt-4.1-nano         <span class="text-yellow-400">████████████████░░░░</span>    <span class="text-yellow-400">80%</span>
+  meta-llama/llama-3.1-8b     <span class="text-yellow-400">███████████████░░░░░</span>    <span class="text-yellow-400">73%</span>
+  mistralai/ministral-8b      <span class="text-yellow-400">████████████░░░░░░░░</span>    <span class="text-yellow-400">60%</span>
+
+  Avg Tokens / Case  <span class="cm">(input + output)</span>
+  ────────────────────────────────────────────────────────────
+  google/gemini-2.0-flash     <span class="text-purple-400">█████░░░░░░░░░░░░░░░</span>     335
+  openai/gpt-4.1-nano         <span class="text-purple-400">██████░░░░░░░░░░░░░░</span>     368
+  mistralai/ministral-8b      <span class="text-purple-400">█████████░░░░░░░░░░░</span>     536
+  meta-llama/llama-3.1-8b     <span class="text-purple-400">█████████████░░░░░░░</span>     748
+  openai/gpt-4.1-mini         <span class="text-purple-400">███████████████░░░░░</span>     891
+  anthropic/claude-haiku-4-5  <span class="text-purple-400">██████████████████░░</span>    1054
+  anthropic/claude-sonnet-4   <span class="text-purple-400">████████████████████</span>    1247
+
+  Avg Duration / Run  <span class="cm">(fastest first)</span>
+  ────────────────────────────────────────────────────────────
+  meta-llama/llama-3.1-8b     <span class="text-blue-400">██░░░░░░░░░░░░░░░░░░</span>      8.6s
+  google/gemini-2.0-flash     <span class="text-blue-400">███░░░░░░░░░░░░░░░░░</span>     14.2s
+  openai/gpt-4.1-nano         <span class="text-blue-400">████░░░░░░░░░░░░░░░░</span>     18.1s
+  openai/gpt-4.1-mini         <span class="text-blue-400">█████░░░░░░░░░░░░░░░</span>     22.7s
+  mistralai/ministral-8b      <span class="text-blue-400">███████░░░░░░░░░░░░░</span>     30.1s
+  anthropic/claude-haiku-4-5  <span class="text-blue-400">████████████░░░░░░░░</span>     52.3s
+  anthropic/claude-sonnet-4   <span class="text-blue-400">████████████████████</span>    1m38s
+
+<span class="text-zinc-300">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7 models · 12 total runs · 3 prompt versions
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span></code></pre>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="max-w-5xl mx-auto px-6 py-12 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
+    <span>agest by <a href="https://sebastiantuyu.com" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">sebastiantuyu</a></span>
+    <div class="flex gap-6">
+      <a href="https://github.com/sebastiantuyu/agest" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">GitHub</a>
+      <a href="https://www.npmjs.com/package/@sebastiantuyu/agest" target="_blank" class="text-zinc-500 hover:text-zinc-300 transition-colors">npm</a>
+    </div>
+  </footer>
+
+  <!-- Charts -->
+  <script>
+    const chartFont = { family: 'ui-monospace, monospace', size: 10 };
+    const gridColor = '#27272a';
+    const tickColor = '#71717a';
+
+    // Success rate bar chart
+    new Chart(document.getElementById('chart-success'), {
+      type: 'bar',
+      data: {
+        labels: ['claude-sonnet-4', 'claude-haiku-4-5', 'gemini-2.0-flash', 'gpt-4.1-mini', 'gpt-4.1-nano', 'llama-3.1-8b', 'ministral-8b'],
+        datasets: [
+          {
+            label: 'prompt v1 · no tools',
+            data: [80, 67, 58, 60, 53, 47, 40],
+            backgroundColor: '#f87171',
+            borderRadius: 4
+          },
+          {
+            label: 'prompt v2 · with tools',
+            data: [100, 93, 93, 87, 80, 73, 60],
+            backgroundColor: '#4ade80',
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#a1a1aa', font: chartFont, boxWidth: 10, padding: 14 } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y + '%' } }
+        },
+        scales: {
+          x: { ticks: { color: tickColor, font: chartFont }, grid: { color: gridColor } },
+          y: { min: 0, max: 100, ticks: { color: tickColor, font: chartFont, callback: v => v + '%' }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    // Scatter: accuracy vs speed
+    new Chart(document.getElementById('chart-scatter'), {
+      type: 'scatter',
+      data: {
+        datasets: [
+          { label: 'claude-sonnet-4', data: [{ x: 6.5, y: 100 }, { x: 9.8, y: 80 }], backgroundColor: '#4ade80', borderColor: '#86efac', pointRadius: 7, pointHoverRadius: 10 },
+          { label: 'claude-haiku-4-5', data: [{ x: 3.5, y: 93 }, { x: 5.2, y: 67 }], backgroundColor: '#60a5fa', borderColor: '#93c5fd', pointRadius: 7, pointHoverRadius: 10 },
+          { label: 'gemini-2.0-flash', data: [{ x: 0.9, y: 93 }, { x: 1.4, y: 58 }], backgroundColor: '#c084fc', borderColor: '#d8b4fe', pointRadius: 7, pointHoverRadius: 10 },
+          { label: 'gpt-4.1-mini', data: [{ x: 1.5, y: 87 }, { x: 2.0, y: 60 }], backgroundColor: '#fbbf24', borderColor: '#fde047', pointRadius: 7, pointHoverRadius: 10 },
+          { label: 'gpt-4.1-nano', data: [{ x: 1.2, y: 80 }, { x: 1.8, y: 53 }], backgroundColor: '#fb923c', borderColor: '#fdba74', pointRadius: 7, pointHoverRadius: 10 },
+          { label: 'llama-3.1-8b', data: [{ x: 0.6, y: 73 }, { x: 0.9, y: 47 }], backgroundColor: '#f87171', borderColor: '#fca5a5', pointRadius: 7, pointHoverRadius: 10 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#a1a1aa', font: chartFont, boxWidth: 10, padding: 10 } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y + '% at ' + ctx.parsed.x.toFixed(1) + 's/case' } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'avg seconds / case', color: tickColor, font: chartFont }, ticks: { color: tickColor, font: chartFont }, grid: { color: gridColor } },
+          y: { min: 30, max: 105, title: { display: true, text: 'accuracy %', color: tickColor, font: chartFont }, ticks: { color: tickColor, font: chartFont, callback: v => v + '%' }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    // Token usage horizontal bar
+    new Chart(document.getElementById('chart-tokens'), {
+      type: 'bar',
+      data: {
+        labels: ['claude-sonnet-4', 'claude-haiku-4-5', 'gpt-4.1-mini', 'llama-3.1-8b', 'ministral-8b', 'gpt-4.1-nano', 'gemini-2.0-flash'],
+        datasets: [
+          { label: 'input tokens', data: [1102, 921, 782, 641, 432, 305, 281], backgroundColor: '#c084fc', borderRadius: 3 },
+          { label: 'output tokens', data: [145, 133, 109, 107, 104, 63, 54], backgroundColor: '#60a5fa', borderRadius: 3 }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#a1a1aa', font: chartFont, boxWidth: 10, padding: 14 } }
+        },
+        scales: {
+          x: { stacked: true, ticks: { color: tickColor, font: chartFont }, grid: { color: gridColor } },
+          y: { stacked: true, ticks: { color: tickColor, font: chartFont }, grid: { color: 'transparent' } }
+        }
+      }
+    });
+
+    // Prompt evolution line chart
+    new Chart(document.getElementById('chart-evolution'), {
+      type: 'line',
+      data: {
+        labels: ['v1 (minimal)', 'v2 (scoped)', 'v3 (+ tools)', 'v4 (refined)'],
+        datasets: [
+          { label: 'claude-sonnet-4', data: [80, 87, 93, 100], borderColor: '#4ade80', backgroundColor: '#4ade8020', tension: 0.3, fill: true, pointRadius: 5 },
+          { label: 'gpt-4.1-mini', data: [60, 73, 80, 87], borderColor: '#fbbf24', backgroundColor: '#fbbf2410', tension: 0.3, fill: true, pointRadius: 5 },
+          { label: 'gemini-2.0-flash', data: [58, 67, 80, 93], borderColor: '#c084fc', backgroundColor: '#c084fc10', tension: 0.3, fill: true, pointRadius: 5 },
+          { label: 'llama-3.1-8b', data: [47, 53, 60, 73], borderColor: '#f87171', backgroundColor: '#f8717110', tension: 0.3, fill: true, pointRadius: 5 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#a1a1aa', font: chartFont, boxWidth: 10, padding: 10 } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y + '%' } }
+        },
+        scales: {
+          x: { ticks: { color: tickColor, font: chartFont }, grid: { color: gridColor } },
+          y: { min: 30, max: 105, ticks: { color: tickColor, font: chartFont, callback: v => v + '%' }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    // Scroll reveal observer
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  </script>
+
+</body>
+</html>

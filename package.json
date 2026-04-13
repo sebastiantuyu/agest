@@ -28,6 +28,8 @@
     "dev": "tsx examples/basic.test.ts",
     "test:examples": "tsx examples/basic.test.ts && tsx examples/agent.test.ts",
     "stats": "tsx src/stats.ts",
+    "preview": "tsx src/preview.ts",
+    "site:preview": "npx serve site -p 3000",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
     "release:major": "npm version major && git push && git push --tags"
@@ -45,5 +47,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.4.0",
     "zod": "^4.3.6"
+  },
+  "dependencies": {
+    "@supercharge/promise-pool": "^3.3.0"
   }
 }

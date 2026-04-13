@@ -16,6 +16,16 @@ export interface AgentResponse {
 export interface SceneDefinition {
   prompt: string;
   assertions: Array<{ field: string; fn: (value: any) => void }>;
+  timeout?: number;
+  turns?: number;
+}
+
+export type JudgeVerdict = "pass" | "fail" | "partial";
+
+export interface JudgeResult {
+  verdict: JudgeVerdict;
+  reasoning: string;
+  criteria: string;
 }
 
 export interface SceneResult {
@@ -24,11 +34,15 @@ export interface SceneResult {
   duration: number;
   passed: boolean;
   error?: string;
+  judgement?: JudgeResult;
 }
 
 export interface AgentReport {
+  name?: string;
   model?: string;
   systemPromptHash?: string;
+  promptHash?: string;
+  dimensions?: Record<string, string>;
   tools?: string[];
   successRate: number;
   failedCases: string[];
