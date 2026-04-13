@@ -13,7 +13,7 @@ import { agent, scene, expect } from "../../../src/index";
 import { langchain } from "../../../src/adapters";
 import { researchAgent } from "./agent";
 
-await agent(langchain(researchAgent), () => {
+agent(langchain(researchAgent), () => {
   scene("In what year was the Eiffel Tower completed?").expect(
     "response",
     (response) => {

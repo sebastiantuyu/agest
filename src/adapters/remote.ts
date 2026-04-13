@@ -6,6 +6,12 @@ export interface RemoteAdapterOptions {
   /** HTTP method, defaults to POST */
   method?: "POST" | "PUT" | "GET";
   /**
+   * Extra fields merged into the request body.
+   * Merged *under* the output of `buildRequest`, so `buildRequest` wins on conflicts.
+   * Ignored when method is GET.
+   */
+  body?: Record<string, unknown>;
+  /**
    * Build the request body from the input prompt.
    * Defaults to `{ prompt: input }`.
    */
@@ -61,6 +67,7 @@ export function remote(
   const {
     headers = {},
     method = "POST",
+    body: extraBody,
     buildRequest = defaultBuildRequest,
     parseResponse,
     metadata: staticMetadata,
@@ -75,7 +82,14 @@ export function remote(
       };
 
       if (method !== "GET") {
-        fetchOptions.body = JSON.stringify(buildRequest(input));
+        const built = buildRequest(input);
+        const merged =
+          extraBody && typeof built === "object" && built !== null
+            ? { ...extraBody, ...(built as Record<string, unknown>) }
+            : extraBody && typeof built !== "object"
+              ? { ...extraBody, prompt: built }
+              : built;
+        fetchOptions.body = JSON.stringify(merged);
       }
 
       res = await fetch(endpoint, fetchOptions);

@@ -22,7 +22,7 @@ vi.mock("./context", () => {
   };
 });
 
-import { scene, agent } from "./index";
+import { scene, agent, _resetAutoRun } from "./index";
 import { setContext, getContext, AgentContext } from "./context";
 
 const mockedSetContext = vi.mocked(setContext);
@@ -30,6 +30,7 @@ const mockedGetContext = vi.mocked(getContext);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetAutoRun();
   mockRegisterScene.mockReturnValue({ toBe: {} });
   mockExecute.mockResolvedValue({ successRate: 1 });
 });
