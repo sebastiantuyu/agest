@@ -15,6 +15,9 @@ node_modules/
 # transpiled files
 dist/
 
+# test coverage
+coverage/
+
 # npm pack
 *.tgz
 
