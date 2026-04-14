@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import type {
   AgentExecutor,
   AgentReport,
+  HookFn,
   SceneDefinition,
   SceneResult,
 } from "./types";
@@ -15,6 +16,8 @@ export class SceneBuilder {
   private _assertions: Array<{ field: string; fn: (value: any) => void }> = [];
   private _timeout?: number;
   private _turns?: number;
+  private _runs?: number;
+  private _suite?: string;
 
   constructor(private _prompt: string) {}
 
@@ -28,23 +31,61 @@ export class SceneBuilder {
     return this;
   }
 
+  runs(n: number): SceneBuilder {
+    this._runs = Math.max(1, Math.round(n));
+    return this;
+  }
+
+  /** @internal */
+  _setSuite(name: string): void {
+    this._suite = name;
+  }
+
   expect(field: string, fn: (value: any) => void): SceneBuilder {
     this._assertions.push({ field, fn });
     return this;
   }
 
   toDefinition(): SceneDefinition {
-    return { prompt: this._prompt, assertions: [...this._assertions], timeout: this._timeout, turns: this._turns };
+    return {
+      prompt: this._prompt,
+      assertions: [...this._assertions],
+      timeout: this._timeout,
+      turns: this._turns,
+      runs: this._runs,
+      suite: this._suite,
+    };
   }
 }
 
 export class AgentContext {
   private _scenes: SceneBuilder[] = [];
+  private _currentSuite?: string;
+
+  private _beforeAllHooks: HookFn[] = [];
+  private _afterAllHooks: HookFn[] = [];
+  private _beforeEachHooks: HookFn[] = [];
+  private _afterEachHooks: HookFn[] = [];
 
   constructor(private _executor: AgentExecutor, private _name?: string) {}
 
+  registerHook(type: "beforeAll" | "afterAll" | "beforeEach" | "afterEach", fn: HookFn): void {
+    this[`_${type}Hooks`].push(fn);
+  }
+
+  setSuite(name: string): void {
+    this._currentSuite = name;
+  }
+
+  clearSuite(): void {
+    this._currentSuite = undefined;
+  }
+
   registerScene(prompt: string): SceneBuilder {
     const builder = new SceneBuilder(prompt);
+    if (this._currentSuite) {
+      builder._setSuite(this._currentSuite);
+    }
     this._scenes.push(builder);
     return builder;
   }
@@ -58,32 +99,71 @@ export class AgentContext {
 
     logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}${parallelism > 1 ? c.dim(` (parallelism: ${parallelism})`) : ""}...\n`));
 
+    // Run beforeAll hooks
+    for (const hook of this._beforeAllHooks) {
+      await hook();
+    }
+
+    let lastSuite: string | undefined;
+
     const tasks = definitions.map((scene, i) => async () => {
+      // Print suite header when entering a new suite
+      if (scene.suite !== lastSuite) {
+        lastSuite = scene.suite;
+        if (scene.suite) {
+          logger.info(`\n  ${c.bold(c.cyan(`▸ ${scene.suite}`))}`);
+        }
+      }
+
       const label = scene.prompt.length > 60
         ? scene.prompt.slice(0, 57) + "..."
         : scene.prompt;
 
+      // Run beforeEach hooks
+      for (const hook of this._beforeEachHooks) {
+        await hook();
+      }
+
       const result = await executeScene(this._executor, scene, config.timeout, config.judge, config.turns);
       orderedResults[i] = result;
 
+      // Run afterEach hooks
+      for (const hook of this._afterEachHooks) {
+        await hook();
+      }
+
       const ms = result.duration.toFixed(0);
+      const runsLabel = result.runs ? c.dim(` [${result.runs.filter(r => r.passed).length}/${result.runs.length} passed]`) : "";
+
       if (result.passed) {
-        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.green("PASS")}${c.dim(` (${ms}ms)`)}`);
+        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.green("PASS")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
       } else if (result.judgement?.verdict === "partial") {
-        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.yellow("PARTIAL")}${c.dim(` (${ms}ms)`)}`);
+        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.yellow("PARTIAL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
         if (result.error) {
           logger.info(`         ${c.yellow(result.error)}`);
         }
       } else {
-        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}`);
+        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
         if (result.error) {
           logger.info(`         ${c.red(result.error)}`);
         }
       }
+
+      if (result.statisticalSignificance != null) {
+        const sig = result.statisticalSignificance;
+        const sigColor = sig >= 0.95 ? c.green : sig >= 0.80 ? c.yellow : c.red;
+        logger.info(`         ${c.dim("significance:")} ${sigColor(`${(sig * 100).toFixed(1)}%`)} ${c.dim(`(pass rate: ${((result.passRate ?? 0) * 100).toFixed(1)}%)`)}`);
+      }
+
       logger.debug(`         response: ${result.response.text?.slice(0, 120)}`);
     });
 
     await PromisePool.withConcurrency(parallelism).for(tasks).process((task) => task());
+
+    // Run afterAll hooks
+    for (const hook of this._afterAllHooks) {
+      await hook();
+    }
 
     const results = orderedResults;
     let totalDuration = results.reduce((sum, r) => sum + r.duration, 0);

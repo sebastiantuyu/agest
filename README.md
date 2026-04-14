@@ -118,6 +118,9 @@ npx tsx examples/openrouter.test.ts
 - [x] Stats CLI with multi-model comparison and dimension analysis
 
 ### Up next
+- [ ] Lifecycle hooks: `beforeEach`, `beforeAll`, `afterEach`, `afterAll` supporting sync/async functions
+- [ ] Multiple test suites per agent to evaluate different aspects independently
+- [ ] Statistical significance scoring based on number of runs per test
 - [ ] Schema validation: `toBe.matchingSchema(zodSchema)`
 - [ ] Semantic similarity: `toBe.semanticallySimilarTo(text, threshold)`
 - [ ] Statistical runs: `.runs(n)` per scene with mean/stddev reporting
