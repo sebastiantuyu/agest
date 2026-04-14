@@ -37,6 +37,11 @@ export function formatReport(report: AgentReport): string {
       if (reason) {
         lines.push(`          reason: "${reason}"`);
       }
+      const result = report.results.find((r) => r.prompt === c);
+      if (result?.response.text) {
+        const escaped = result.response.text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+        lines.push(`          response: "${escaped}"`);
+      }
     }
   }
 
@@ -47,7 +52,26 @@ export function formatReport(report: AgentReport): string {
     for (const s of suites) {
       const suiteResults = report.results.filter((r) => r.suite === s);
       const suitePassed = suiteResults.filter((r) => r.passed).length;
-      lines.push(`        ${s}: ${suitePassed}/${suiteResults.length} passed`);
+      const suiteRate = suiteResults.length > 0
+        ? Number((suitePassed / suiteResults.length).toFixed(2))
+        : 0;
+      lines.push(`        - name: "${s}"`);
+      lines.push(`          success_rate: ${suiteRate}`);
+      lines.push(`          total_cases: ${suiteResults.length}`);
+      lines.push(`          failed_cases_count: ${suiteResults.length - suitePassed}`);
+      if (suitePassed < suiteResults.length) {
+        lines.push(`          failed_cases:`);
+        for (const r of suiteResults.filter((r) => !r.passed)) {
+          lines.push(`              - "${r.prompt}"`);
+          if (r.error) {
+            lines.push(`                reason: "${r.error}"`);
+          }
+          if (r.response.text) {
+            const escaped = r.response.text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+            lines.push(`                response: "${escaped}"`);
+          }
+        }
+      }
     }
   }
 

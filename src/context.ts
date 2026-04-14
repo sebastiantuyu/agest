@@ -97,24 +97,19 @@ export class AgentContext {
     const orderedResults: SceneResult[] = new Array(definitions.length);
     const total = definitions.length;
 
-    logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}${parallelism > 1 ? c.dim(` (parallelism: ${parallelism})`) : ""}...\n`));
+    // Group scenes by suite for organized output
+    const suiteNames = [...new Set(definitions.map((d) => d.suite).filter(Boolean))] as string[];
+    const hasSuites = suiteNames.length > 0;
+    const suiteCount = hasSuites ? ` (${suiteNames.length} suite${suiteNames.length !== 1 ? "s" : ""})` : "";
+
+    logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}${suiteCount}${parallelism > 1 ? c.dim(` (parallelism: ${parallelism})`) : ""}...\n`));
 
     // Run beforeAll hooks
     for (const hook of this._beforeAllHooks) {
       await hook();
     }
 
-    let lastSuite: string | undefined;
-
-    const tasks = definitions.map((scene, i) => async () => {
-      // Print suite header when entering a new suite
-      if (scene.suite !== lastSuite) {
-        lastSuite = scene.suite;
-        if (scene.suite) {
-          logger.info(`\n  ${c.bold(c.cyan(`▸ ${scene.suite}`))}`);
-        }
-      }
-
+    const buildTask = (scene: SceneDefinition, i: number) => async () => {
       const label = scene.prompt.length > 60
         ? scene.prompt.slice(0, 57) + "..."
         : scene.prompt;
@@ -134,31 +129,57 @@ export class AgentContext {
 
       const ms = result.duration.toFixed(0);
       const runsLabel = result.runs ? c.dim(` [${result.runs.filter(r => r.passed).length}/${result.runs.length} passed]`) : "";
+      const indent = hasSuites ? "    " : "  ";
 
       if (result.passed) {
-        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.green("PASS")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
+        logger.info(`${indent}${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.green("PASS")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
       } else if (result.judgement?.verdict === "partial") {
-        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.yellow("PARTIAL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
+        logger.info(`${indent}${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.yellow("PARTIAL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
         if (result.error) {
-          logger.info(`         ${c.yellow(result.error)}`);
+          logger.info(`${indent}       ${c.yellow(result.error)}`);
         }
       } else {
-        logger.info(`  ${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
+        logger.info(`${indent}${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
         if (result.error) {
-          logger.info(`         ${c.red(result.error)}`);
+          logger.info(`${indent}       ${c.red(result.error)}`);
         }
       }
 
       if (result.statisticalSignificance != null) {
         const sig = result.statisticalSignificance;
         const sigColor = sig >= 0.95 ? c.green : sig >= 0.80 ? c.yellow : c.red;
-        logger.info(`         ${c.dim("significance:")} ${sigColor(`${(sig * 100).toFixed(1)}%`)} ${c.dim(`(pass rate: ${((result.passRate ?? 0) * 100).toFixed(1)}%)`)}`);
+        logger.info(`${indent}       ${c.dim("significance:")} ${sigColor(`${(sig * 100).toFixed(1)}%`)} ${c.dim(`(pass rate: ${((result.passRate ?? 0) * 100).toFixed(1)}%)`)}`);
       }
 
-      logger.debug(`         response: ${result.response.text?.slice(0, 120)}`);
-    });
+      logger.debug(`${indent}       response: ${result.response.text?.slice(0, 120)}`);
+    };
 
-    await PromisePool.withConcurrency(parallelism).for(tasks).process((task) => task());
+    if (hasSuites) {
+      // Execute suite by suite — print header once, then run all scenes in that suite
+      for (const suiteName of suiteNames) {
+        const suiteIndices = definitions
+          .map((d, i) => d.suite === suiteName ? i : -1)
+          .filter((i) => i !== -1);
+
+        logger.info(`  ${c.bold(c.cyan(`▸ ${suiteName}`))} ${c.dim(`(${suiteIndices.length} scene${suiteIndices.length !== 1 ? "s" : ""})`)}`);
+
+        const tasks = suiteIndices.map((i) => buildTask(definitions[i], i));
+        await PromisePool.withConcurrency(parallelism).for(tasks).process((task) => task());
+        logger.info("");
+      }
+
+      // Run any scenes not in a suite
+      const unsuitedIndices = definitions
+        .map((d, i) => d.suite ? -1 : i)
+        .filter((i) => i !== -1);
+      if (unsuitedIndices.length > 0) {
+        const tasks = unsuitedIndices.map((i) => buildTask(definitions[i], i));
+        await PromisePool.withConcurrency(parallelism).for(tasks).process((task) => task());
+      }
+    } else {
+      const tasks = definitions.map((scene, i) => buildTask(scene, i));
+      await PromisePool.withConcurrency(parallelism).for(tasks).process((task) => task());
+    }
 
     // Run afterAll hooks
     for (const hook of this._afterAllHooks) {

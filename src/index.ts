@@ -55,11 +55,13 @@ export function suite(name: string, fn: () => void): void {
 
 const pendingAgents: Promise<AgentReport>[] = [];
 let autoRunScheduled = false;
+let executionChain: Promise<void> = Promise.resolve();
 
 /** @internal reset auto-run state between tests */
 export function _resetAutoRun(): void {
   pendingAgents.length = 0;
   autoRunScheduled = false;
+  executionChain = Promise.resolve();
 }
 
 export function agent(
@@ -79,7 +81,8 @@ export function agent(
 
   setContext(null);
 
-  const promise = ctx.execute();
+  const promise = executionChain.then(() => ctx.execute());
+  executionChain = promise.then(() => {}, () => {});
   pendingAgents.push(promise);
 
   if (!autoRunScheduled) {
