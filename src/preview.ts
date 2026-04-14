@@ -766,9 +766,92 @@ function renderScatterPlot(group: AgentGroup): string {
     </div>`;
 }
 
+function renderSingleRun(report: ParsedReport): string {
+  const pct = (report.successRate * 100).toFixed(0);
+  const passed = report.totalCases - report.failedCasesCount;
+  const color = rateClass(report.successRate);
+  const dur = formatDuration(report.duration);
+
+  const failedRows = report.failedCases
+    .map(
+      (fc) => `
+      <tr class="border-t border-zinc-800/50">
+        <td class="py-2 pr-4 text-zinc-300 text-xs">${escHtml(fc.prompt)}</td>
+        <td class="py-2 text-zinc-500 text-xs">${escHtml(fc.reason ?? "")}</td>
+      </tr>`
+    )
+    .join("");
+
+  const failedSection =
+    report.failedCases.length > 0
+      ? `
+    <div class="mt-6">
+      <h4 class="text-xs text-zinc-500 uppercase tracking-widest mb-2">Failed Cases</h4>
+      <table class="w-full text-left">
+        <thead><tr class="text-zinc-600 text-xs">
+          <th class="pb-1 pr-4">Prompt</th>
+          <th class="pb-1">Reason</th>
+        </tr></thead>
+        <tbody>${failedRows}</tbody>
+      </table>
+    </div>`
+      : "";
+
+  return `
+    <div class="bg-zinc-900/50 rounded-lg border border-zinc-800 p-6">
+      <div class="flex items-baseline gap-6 mb-4">
+        <span class="${color} text-3xl font-bold">${pct}%</span>
+        <span class="text-zinc-500 text-sm">${passed}/${report.totalCases} passed</span>
+        <span class="text-zinc-600 text-sm">${dur}</span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <span class="text-zinc-500">Model</span>
+          <p class="text-zinc-300">${escHtml(report.model)}</p>
+        </div>
+        <div>
+          <span class="text-zinc-500">Timestamp</span>
+          <p class="text-zinc-300">${formatTimestamp(report.timestamp)}</p>
+        </div>
+        ${
+          report.averageInputTokensPerCase != null
+            ? `<div>
+          <span class="text-zinc-500">Avg Input Tokens</span>
+          <p class="text-zinc-300">${Math.round(report.averageInputTokensPerCase)}</p>
+        </div>`
+            : ""
+        }
+        ${
+          report.averageOutputTokensPerCase != null
+            ? `<div>
+          <span class="text-zinc-500">Avg Output Tokens</span>
+          <p class="text-zinc-300">${Math.round(report.averageOutputTokensPerCase)}</p>
+        </div>`
+            : ""
+        }
+        ${
+          report.tools && report.tools.length > 0
+            ? `<div>
+          <span class="text-zinc-500">Tools</span>
+          <p class="text-zinc-300">${escHtml(report.tools.join(", "))}</p>
+        </div>`
+            : ""
+        }
+      </div>
+      ${failedSection}
+    </div>`;
+}
+
 function renderAgentSection(group: AgentGroup): string {
   const chartHtml = renderGroupedBarChart(group);
   const scatterHtml = renderScatterPlot(group);
+
+  // When there are no comparative charts, show a single-run summary card
+  const singleRunHtml =
+    !chartHtml && !scatterHtml && group.runs.length > 0
+      ? renderSingleRun(group.runs[0].report)
+      : "";
 
   return `
   <section class="mb-12">
@@ -776,6 +859,7 @@ function renderAgentSection(group: AgentGroup): string {
 
     ${chartHtml}
     ${scatterHtml}
+    ${singleRunHtml}
   </section>`;
 }
 
