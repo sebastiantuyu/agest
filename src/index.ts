@@ -1,4 +1,4 @@
-import type { AgentExecutor, AgentReport } from "./types";
+import type { AgentExecutor, AgentReport, HookFn } from "./types";
 import { AgentContext, SceneBuilder, setContext, getContext } from "./context";
 
 export { expect } from "./assertions";
@@ -13,8 +13,10 @@ export type {
   AgentResponse,
   AgentReport,
   SceneResult,
+  RunResult,
   JudgeVerdict,
   JudgeResult,
+  HookFn,
 } from "./types";
 
 export interface AgentOptions {
@@ -23,6 +25,32 @@ export interface AgentOptions {
 
 export function scene(prompt: string): SceneBuilder {
   return getContext().registerScene(prompt);
+}
+
+export function beforeAll(fn: HookFn): void {
+  getContext().registerHook("beforeAll", fn);
+}
+
+export function afterAll(fn: HookFn): void {
+  getContext().registerHook("afterAll", fn);
+}
+
+export function beforeEach(fn: HookFn): void {
+  getContext().registerHook("beforeEach", fn);
+}
+
+export function afterEach(fn: HookFn): void {
+  getContext().registerHook("afterEach", fn);
+}
+
+export function suite(name: string, fn: () => void): void {
+  const ctx = getContext();
+  ctx.setSuite(name);
+  try {
+    fn();
+  } finally {
+    ctx.clearSuite();
+  }
 }
 
 const pendingAgents: Promise<AgentReport>[] = [];

@@ -40,6 +40,30 @@ export function formatReport(report: AgentReport): string {
     }
   }
 
+  // Suite breakdown
+  const suites = new Set(report.results.map((r) => r.suite).filter(Boolean));
+  if (suites.size > 0) {
+    lines.push(`    suites:`);
+    for (const s of suites) {
+      const suiteResults = report.results.filter((r) => r.suite === s);
+      const suitePassed = suiteResults.filter((r) => r.passed).length;
+      lines.push(`        ${s}: ${suitePassed}/${suiteResults.length} passed`);
+    }
+  }
+
+  // Statistical runs summary
+  const withRuns = report.results.filter((r) => r.runs && r.runs.length > 1);
+  if (withRuns.length > 0) {
+    lines.push(`    statistical_runs:`);
+    for (const r of withRuns) {
+      const label = r.prompt.length > 50 ? r.prompt.slice(0, 47) + "..." : r.prompt;
+      lines.push(`        - "${label}"`);
+      lines.push(`          runs: ${r.runs!.length}`);
+      lines.push(`          pass_rate: ${((r.passRate ?? 0) * 100).toFixed(1)}%`);
+      lines.push(`          significance: ${((r.statisticalSignificance ?? 0) * 100).toFixed(1)}%`);
+    }
+  }
+
   lines.push(
     `    timestamp: "${report.timestamp}"`,
     `    duration: ${report.duration}`,
