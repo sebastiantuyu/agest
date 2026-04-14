@@ -2,6 +2,14 @@ import { createHash } from "crypto";
 import { readdir, readFile } from "fs/promises";
 import { join } from "path";
 
+export interface ParsedSuiteResult {
+  name: string;
+  successRate: number;
+  totalCases: number;
+  failedCasesCount: number;
+  failedCases: Array<{ prompt: string; reason?: string; response?: string }>;
+}
+
 export interface ParsedReport {
   name?: string;
   systemPromptHash?: string;
@@ -12,11 +20,12 @@ export interface ParsedReport {
   successRate: number;
   totalCases: number;
   failedCasesCount: number;
-  failedCases: Array<{ prompt: string; reason?: string }>;
+  failedCases: Array<{ prompt: string; reason?: string; response?: string }>;
   duration: number;
   timestamp: string;
   averageInputTokensPerCase?: number;
   averageOutputTokensPerCase?: number;
+  suites?: ParsedSuiteResult[];
   source: string;
 }
 
@@ -35,21 +44,30 @@ export function extractField(content: string, key: string): string | undefined {
 
 export function parseFailedCases(
   content: string
-): Array<{ prompt: string; reason?: string }> {
+): Array<{ prompt: string; reason?: string; response?: string }> {
   const lines = content.split("\n");
   const startIdx = lines.findIndex((l) =>
     l.trimStart().startsWith("failed_cases:")
   );
   if (startIdx === -1) return [];
-  const cases: Array<{ prompt: string; reason?: string }> = [];
+  const cases: Array<{ prompt: string; reason?: string; response?: string }> = [];
   for (let i = startIdx + 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line.startsWith("        ")) break;
     const promptMatch = line.match(/^\s+- "(.+)"$/);
     if (promptMatch) {
-      const next = lines[i + 1];
-      const reasonMatch = next?.match(/^\s+reason: "(.+)"$/);
-      cases.push({ prompt: promptMatch[1], reason: reasonMatch?.[1] });
+      let reason: string | undefined;
+      let response: string | undefined;
+      // Look ahead for reason and response fields
+      for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+        const next = lines[j];
+        if (!next || !next.match(/^\s+(reason|response):/)) break;
+        const reasonMatch = next.match(/^\s+reason: "(.+)"$/);
+        if (reasonMatch) reason = reasonMatch[1];
+        const responseMatch = next.match(/^\s+response: "(.+)"$/);
+        if (responseMatch) response = responseMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
+      cases.push({ prompt: promptMatch[1], reason, response });
     }
   }
   return cases;
@@ -70,6 +88,64 @@ export function parseDimensions(content: string): Record<string, string> | undef
     }
   }
   return Object.keys(dims).length > 0 ? dims : undefined;
+}
+
+export function parseSuites(content: string): ParsedSuiteResult[] | undefined {
+  const lines = content.split("\n");
+  const startIdx = lines.findIndex((l) => l.trim() === "suites:");
+  if (startIdx === -1) return undefined;
+
+  const suites: ParsedSuiteResult[] = [];
+  let current: Partial<ParsedSuiteResult> | null = null;
+  let parsingFailedCases = false;
+
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    // Stop if we exit the suites indentation level
+    if (line.length > 0 && !line.startsWith("        ")) break;
+    if (line.trim() === "") continue;
+
+    const nameMatch = line.match(/^\s+- name: "(.+)"$/);
+    if (nameMatch) {
+      if (current) suites.push(current as ParsedSuiteResult);
+      current = { name: nameMatch[1], failedCases: [], failedCasesCount: 0 };
+      parsingFailedCases = false;
+      continue;
+    }
+
+    if (!current) continue;
+
+    const srMatch = line.match(/^\s+success_rate: (.+)$/);
+    if (srMatch) { current.successRate = parseFloat(srMatch[1]); continue; }
+
+    const tcMatch = line.match(/^\s+total_cases: (.+)$/);
+    if (tcMatch) { current.totalCases = parseInt(tcMatch[1], 10); continue; }
+
+    const fccMatch = line.match(/^\s+failed_cases_count: (.+)$/);
+    if (fccMatch) { current.failedCasesCount = parseInt(fccMatch[1], 10); continue; }
+
+    if (line.trim() === "failed_cases:") { parsingFailedCases = true; continue; }
+
+    if (parsingFailedCases) {
+      const promptMatch = line.match(/^\s+- "(.+)"$/);
+      if (promptMatch) {
+        let reason: string | undefined;
+        let response: string | undefined;
+        for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+          const next = lines[j];
+          if (!next || !next.match(/^\s+(reason|response):/)) break;
+          const reasonMatch = next.match(/^\s+reason: "(.+)"$/);
+          if (reasonMatch) reason = reasonMatch[1];
+          const responseMatch = next.match(/^\s+response: "(.+)"$/);
+          if (responseMatch) response = responseMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        }
+        current.failedCases!.push({ prompt: promptMatch[1], reason, response });
+      }
+    }
+  }
+  if (current) suites.push(current as ParsedSuiteResult);
+
+  return suites.length > 0 ? suites : undefined;
 }
 
 export function parseReport(content: string, source: string): ParsedReport {
@@ -113,6 +189,7 @@ export function parseReport(content: string, source: string): ParsedReport {
     timestamp: extractField(content, "timestamp") ?? "",
     averageInputTokensPerCase: avgIn != null ? parseFloat(avgIn) : undefined,
     averageOutputTokensPerCase: avgOut != null ? parseFloat(avgOut) : undefined,
+    suites: parseSuites(content),
     source,
   };
 }
@@ -343,6 +420,21 @@ export function groupByDimension(
     groups.set(val, arr);
   }
   return groups;
+}
+
+/**
+ * Wilson score interval lower bound at 95% confidence.
+ * Gives a conservative success rate estimate that accounts for sample size.
+ */
+export function wilsonLowerBound(successRate: number, totalCases: number): number {
+  if (totalCases === 0) return 0;
+  const z = 1.96;
+  const p = successRate;
+  const denominator = 1 + (z * z) / totalCases;
+  const centre = p + (z * z) / (2 * totalCases);
+  const spread = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * totalCases)) / totalCases);
+  const lower = (centre - spread) / denominator;
+  return Math.max(0, Math.min(1, lower));
 }
 
 export function formatDuration(ms: number): string {

@@ -5,9 +5,11 @@ import { exec } from "child_process";
 import {
   type ParsedReport,
   type ControlledComparison,
+  type DiffEntry,
   parseReport,
   findReports,
   loadDiffEntry,
+  wilsonLowerBound,
   computeDiff,
   formatDuration,
   ensureDimensions,
@@ -32,6 +34,7 @@ interface AgentGroup {
   runs: RunEntry[];
   varyingDims: string[];
   controlledPairs: ControlledComparison[];
+  diffEntries: (DiffEntry | null)[];
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +90,112 @@ function formatTimestamp(ts: string): string {
   } catch {
     return ts;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Smart dimension labels
+// ---------------------------------------------------------------------------
+
+/**
+ * Build human-readable labels for each unique value of each dimension.
+ * - model: short name after "/"
+ * - tools: compact tool names or count
+ * - prompt: diff-based labels from .diff/ entries when available
+ */
+function buildSmartLabels(
+  sorted: ParsedReport[],
+  allDims: string[],
+  diffEntries: (DiffEntry | null)[],
+): Map<string, Map<string, string>> {
+  const labels = new Map<string, Map<string, string>>();
+
+  for (const dim of allDims) {
+    const dimLabels = new Map<string, string>();
+
+    if (dim === "model") {
+      for (const r of sorted) {
+        const val = r.dimensions?.[dim] ?? "?";
+        if (!dimLabels.has(val)) {
+          const short = val.length > 16 ? val.split("/").pop()?.slice(0, 16) ?? val.slice(0, 16) : val;
+          dimLabels.set(val, short);
+        }
+      }
+    } else if (dim === "tools") {
+      for (const r of sorted) {
+        const val = r.dimensions?.[dim] ?? "?";
+        if (!dimLabels.has(val)) {
+          if (val === "none") {
+            dimLabels.set(val, "no tools");
+          } else {
+            const toolList = val.split(",");
+            if (toolList.length <= 2) {
+              dimLabels.set(val, toolList.join(", "));
+            } else {
+              dimLabels.set(val, `${toolList.length} tools`);
+            }
+          }
+        }
+      }
+    } else if (dim === "prompt") {
+      // Collect unique prompt hashes in chronological order
+      const uniqueHashes: string[] = [];
+      const hashToDiff = new Map<string, DiffEntry>();
+      for (let i = 0; i < sorted.length; i++) {
+        const val = sorted[i].dimensions?.[dim] ?? "?";
+        if (!uniqueHashes.includes(val)) {
+          uniqueHashes.push(val);
+          const diff = diffEntries[i];
+          if (diff) hashToDiff.set(val, diff);
+        }
+      }
+
+      for (let j = 0; j < uniqueHashes.length; j++) {
+        const hash = uniqueHashes[j];
+        const diff = hashToDiff.get(hash);
+
+        if (j === 0) {
+          // First prompt: show truncated first line or "baseline"
+          if (diff?.systemPrompt) {
+            const firstLine = diff.systemPrompt.split("\n").find((l) => l.trim()) ?? "";
+            dimLabels.set(hash, firstLine.length > 28 ? firstLine.slice(0, 27) + "…" : firstLine || "baseline");
+          } else {
+            dimLabels.set(hash, "baseline");
+          }
+        } else {
+          // Subsequent: compute diff snippet vs previous
+          const prevHash = uniqueHashes[j - 1];
+          const prevDiff = hashToDiff.get(prevHash);
+          if (diff && prevDiff) {
+            const changes = computeDiff(prevDiff, diff);
+            const promptChanges = changes
+              .filter((l) => l.startsWith("prompt:"))
+              .map((l) => l.replace(/^prompt:\s*/, "").slice(0, 30));
+            const toolChanges = changes
+              .filter((l) => l.startsWith("tools:"))
+              .map((l) => l.replace(/^tools:\s*/, "").slice(0, 30));
+            const snippets = [...promptChanges, ...toolChanges].slice(0, 2);
+            dimLabels.set(hash, snippets.length > 0 ? snippets.join(", ") : `v${j + 1}`);
+          } else {
+            dimLabels.set(hash, `v${j + 1}`);
+          }
+        }
+      }
+    } else {
+      // Generic fallback: version numbering
+      let idx = 1;
+      for (const r of sorted) {
+        const val = r.dimensions?.[dim] ?? "?";
+        if (!dimLabels.has(val)) {
+          dimLabels.set(val, `v${idx}`);
+          idx++;
+        }
+      }
+    }
+
+    labels.set(dim, dimLabels);
+  }
+
+  return labels;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +289,211 @@ function renderRunRow(entry: RunEntry, idx: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Radar Chart (suite breakdown)
+// ---------------------------------------------------------------------------
+
+const RADAR_COLORS = [
+  { border: "#f87171", fill: "rgba(248,113,113,0.15)" },
+  { border: "#38bdf8", fill: "rgba(56,189,248,0.15)" },
+  { border: "#4ade80", fill: "rgba(74,222,128,0.15)" },
+  { border: "#facc15", fill: "rgba(250,204,21,0.15)" },
+  { border: "#a78bfa", fill: "rgba(167,139,250,0.15)" },
+  { border: "#fb923c", fill: "rgba(251,146,60,0.15)" },
+  { border: "#f472b6", fill: "rgba(244,114,182,0.15)" },
+  { border: "#2dd4bf", fill: "rgba(45,212,191,0.15)" },
+];
+
+function renderRadarChart(group: AgentGroup): string {
+  const reportsWithSuites = group.runs
+    .map((r) => r.report)
+    .filter((r) => r.suites && r.suites.length > 0);
+
+  if (reportsWithSuites.length === 0) return "";
+
+  // Collect all unique suite names
+  const allSuiteNames = [
+    ...new Set(reportsWithSuites.flatMap((r) => r.suites!.map((s) => s.name))),
+  ];
+
+  if (allSuiteNames.length < 3) return ""; // Radar needs at least 3 axes
+
+  // Group by model — each model gets its own dataset
+  const byModel = new Map<string, typeof reportsWithSuites>();
+  for (const r of reportsWithSuites) {
+    const model = r.model ?? "unknown";
+    const arr = byModel.get(model) ?? [];
+    arr.push(r);
+    byModel.set(model, arr);
+  }
+
+  const agentId = escHtml(group.label).replace(/\s+/g, "-").toLowerCase();
+
+  // Build one canvas per model + one "all" combined view
+  const modelEntries = [...byModel.entries()];
+  const allModels = modelEntries.map(([m]) => m);
+  const showToggle = allModels.length > 1;
+
+  // "All models" combined dataset
+  const allDatasets = modelEntries.map(([model, reports], i) => {
+    const latest = reports[reports.length - 1];
+    const color = RADAR_COLORS[i % RADAR_COLORS.length];
+    const rawData = allSuiteNames.map((suiteName) => {
+      const suite = latest.suites!.find((s) => s.name === suiteName);
+      return suite ? +(suite.successRate * 100).toFixed(1) : 0;
+    });
+    const wilsonData = allSuiteNames.map((suiteName) => {
+      const suite = latest.suites!.find((s) => s.name === suiteName);
+      return suite ? +(wilsonLowerBound(suite.successRate, suite.totalCases) * 100).toFixed(1) : 0;
+    });
+    const short =
+      model.split("/").pop()?.slice(0, 24) ?? model.slice(0, 24);
+    return {
+      label: short,
+      data: rawData,
+      _rawData: rawData,
+      _wilsonData: wilsonData,
+      borderColor: color.border,
+      backgroundColor: color.fill,
+      pointBackgroundColor: color.border,
+      pointBorderColor: "#18181b",
+      pointRadius: 4,
+      borderWidth: 2,
+    };
+  });
+
+  const radarOptions = `{
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          color: '#a1a1aa',
+          font: { family: 'ui-monospace, monospace', size: 10 },
+          boxWidth: 12,
+          padding: 16
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.r + '%'; }
+        }
+      }
+    },
+    scales: {
+      r: {
+        min: 0,
+        max: 100,
+        ticks: {
+          color: '#71717a',
+          backdropColor: 'transparent',
+          font: { family: 'ui-monospace, monospace', size: 9 },
+          callback: function(v) { return v + '%'; }
+        },
+        pointLabels: {
+          color: '#a1a1aa',
+          font: { family: 'ui-monospace, monospace', size: 11 }
+        },
+        grid: { color: '#27272a' },
+        angleLines: { color: '#27272a' }
+      }
+    }
+  }`;
+
+  // Build combined radar canvas
+  const allCanvasId = `radar-all-${agentId}`;
+  let canvasesHtml = `
+    <div class="radar-model-view" data-agent="${agentId}" data-model="__all__" style="display:block">
+      <div style="position:relative;height:400px">
+        <canvas id="${allCanvasId}"></canvas>
+      </div>
+      <script>
+        (function() {
+          var chart = new Chart(document.getElementById('${allCanvasId}'), {
+            type: 'radar',
+            data: {
+              labels: ${JSON.stringify(allSuiteNames)},
+              datasets: ${JSON.stringify(allDatasets)}
+            },
+            options: ${radarOptions}
+          });
+          window.__agestCharts['${allCanvasId}'] = chart;
+        })();
+      </script>
+    </div>`;
+
+  // Per-model radar canvases (hidden by default)
+  if (showToggle) {
+    for (let i = 0; i < modelEntries.length; i++) {
+      const [model, reports] = modelEntries[i];
+      const latest = reports[reports.length - 1];
+      const color = RADAR_COLORS[i % RADAR_COLORS.length];
+      const rawData = allSuiteNames.map((suiteName) => {
+        const suite = latest.suites!.find((s) => s.name === suiteName);
+        return suite ? +(suite.successRate * 100).toFixed(1) : 0;
+      });
+      const wilsonData = allSuiteNames.map((suiteName) => {
+        const suite = latest.suites!.find((s) => s.name === suiteName);
+        return suite ? +(wilsonLowerBound(suite.successRate, suite.totalCases) * 100).toFixed(1) : 0;
+      });
+      const short =
+        model.split("/").pop()?.slice(0, 24) ?? model.slice(0, 24);
+      const canvasId = `radar-${agentId}-${i}`;
+      const safeModel = escHtml(model);
+
+      canvasesHtml += `
+    <div class="radar-model-view" data-agent="${agentId}" data-model="${safeModel}" style="display:none">
+      <div style="position:relative;height:400px">
+        <canvas id="${canvasId}"></canvas>
+      </div>
+      <script>
+        (function() {
+          var chart = new Chart(document.getElementById('${canvasId}'), {
+            type: 'radar',
+            data: {
+              labels: ${JSON.stringify(allSuiteNames)},
+              datasets: [${JSON.stringify({
+                label: short,
+                data: rawData,
+                _rawData: rawData,
+                _wilsonData: wilsonData,
+                borderColor: color.border,
+                backgroundColor: color.fill,
+                pointBackgroundColor: color.border,
+                pointBorderColor: "#18181b",
+                pointRadius: 4,
+                borderWidth: 2,
+              })}]
+            },
+            options: ${radarOptions}
+          });
+          window.__agestCharts['${canvasId}'] = chart;
+        })();
+      </script>
+    </div>`;
+    }
+  }
+
+  // Model selector dropdown (only when multiple models)
+  const modelSelector = showToggle
+    ? `<select class="radar-model-select bg-zinc-800 text-zinc-300 text-xs border border-zinc-700 rounded px-2 py-1"
+        data-agent="${agentId}"
+        onchange="filterRadarModel('${agentId}', this.value)">
+        <option value="__all__">All Models</option>
+        ${allModels.map((m) => `<option value="${escHtml(m)}">${escHtml(m.split("/").pop()?.slice(0, 30) ?? m.slice(0, 30))}</option>`).join("\n")}
+      </select>`
+    : "";
+
+  return `
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-4">
+      <div class="flex items-center justify-between mb-4">
+        <span class="text-xs text-zinc-600 uppercase tracking-wider">suite breakdown</span>
+        ${modelSelector}
+      </div>
+      ${canvasesHtml}
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Grouped Bar Chart (benchmark-style)
 // ---------------------------------------------------------------------------
 
@@ -200,8 +514,6 @@ function renderMatrixView(
   allDims: string[],
   versionMaps: Map<string, Map<string, string>>,
   dimLabel: (dim: string, val: string) => string,
-  agentId: string,
-  isActive: boolean,
 ): string {
   const otherDims = allDims.filter((d) => d !== groupDim);
 
@@ -266,6 +578,7 @@ function renderMatrixView(
             return `<td class="px-4 py-2"><span class="text-xs text-zinc-700">&mdash;</span></td>`;
           }
           const pct = r.successRate * 100;
+          const wilsonPct = wilsonLowerBound(r.successRate, r.totalCases) * 100;
           const color = barColor(r.successRate);
           const tc = rateClass(r.successRate);
           return `<td class="px-4 py-2">
@@ -273,7 +586,7 @@ function renderMatrixView(
               <div class="flex-1 bg-zinc-800 rounded h-2 overflow-hidden" style="min-width:80px">
                 <div class="h-2 rounded" style="width:${pct.toFixed(1)}%;background:${color}"></div>
               </div>
-              <span class="text-sm font-medium ${tc} w-12 text-right">${pct.toFixed(0)}%</span>
+              <span class="text-sm font-medium ${tc} w-12 text-right" data-raw="${pct.toFixed(0)}%" data-wilson="${wilsonPct.toFixed(0)}%">${pct.toFixed(0)}%</span>
             </div>
           </td>`;
         })
@@ -305,10 +618,7 @@ function renderMatrixView(
     .filter(Boolean)
     .join("\n");
 
-  return `<div class="chart-view" data-agent="${agentId}" data-dim="${escHtml(groupDim)}" style="display:${isActive ? "block" : "none"}">
-    <div class="mb-4">
-      <div class="text-xs text-zinc-600 uppercase tracking-wider mb-1">grouped by ${escHtml(groupDim)}</div>
-    </div>
+  return `
     <div class="overflow-x-auto">
       <table class="w-full">
         <thead>
@@ -324,8 +634,7 @@ function renderMatrixView(
     </div>
     <div class="mt-4 pt-3 border-t border-zinc-800/50 space-y-1">
       ${versionRef}
-    </div>
-  </div>`;
+    </div>`;
 }
 
 function renderGroupedBarChart(group: AgentGroup): string {
@@ -343,47 +652,25 @@ function renderGroupedBarChart(group: AgentGroup): string {
 
   const agentId = escHtml(group.label).replace(/\s+/g, "-").toLowerCase();
 
-  // Build version labels for each dimension: first unique value seen = v1, etc.
-  const versionMaps = new Map<string, Map<string, string>>();
   const sorted = [...reports].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
-  for (const dim of allDims) {
-    const seen = new Map<string, string>();
-    let idx = 1;
-    for (const r of sorted) {
-      const val = r.dimensions?.[dim] ?? "?";
-      if (!seen.has(val)) {
-        seen.set(val, `v${idx}`);
-        idx++;
-      }
-    }
-    versionMaps.set(dim, seen);
-  }
+
+  // Build smart labels using diff entries for prompt/tools readability
+  const versionMaps = buildSmartLabels(sorted, allDims, group.diffEntries);
 
   const dimLabel = (dim: string, val: string): string => {
-    const vMap = versionMaps.get(dim);
-    const version = vMap?.get(val) ?? "?";
-    // For model, show short model name. For others, show version tag.
-    if (dim === "model") {
-      const short = val.length > 16 ? val.split("/").pop()?.slice(0, 16) ?? val.slice(0, 16) : val;
-      return short;
-    }
-    // For tools, show "none" directly instead of a version tag
-    if (dim === "tools" && val === "none") {
-      return "none";
-    }
-    return version;
+    return versionMaps.get(dim)?.get(val) ?? val;
   };
 
   // Build a chart for each possible grouping dimension
   const charts = varying.map((groupDim, dimIdx) => {
     const isActive = dimIdx === 0;
 
-    // For non-model dimensions, render a matrix/heatmap view instead of bar chart
-    if (groupDim !== "model") {
-      return renderMatrixView(sorted, groupDim, allDims, versionMaps, dimLabel, agentId, isActive);
-    }
+    // Also render a matrix/table view for non-model dimensions (hidden by default)
+    const matrixHtml = groupDim !== "model"
+      ? renderMatrixView(sorted, groupDim, allDims, versionMaps, dimLabel)
+      : "";
 
     const otherDims = allDims.filter((d) => d !== groupDim);
 
@@ -411,13 +698,18 @@ function renderGroupedBarChart(group: AgentGroup): string {
       const parts = ck.split("|");
       const cfgLabel = otherDims.map((d, i) => `${d}: ${dimLabel(d, parts[i] ?? "?")}`).join(", ");
 
-      const data = groupVals.map((gv) => {
+      const rawData = groupVals.map((gv) => {
         const groupRuns = grouped.get(gv) ?? [];
         const match = groupRuns.find((r) => configKey(r) === ck);
         return match ? +(match.successRate * 100).toFixed(1) : null;
       });
+      const wilsonData = groupVals.map((gv) => {
+        const groupRuns = grouped.get(gv) ?? [];
+        const match = groupRuns.find((r) => configKey(r) === ck);
+        return match ? +(wilsonLowerBound(match.successRate, match.totalCases) * 100).toFixed(1) : null;
+      });
 
-      return { label: cfgLabel, data, backgroundColor: color.bg, borderColor: color.bg, borderWidth: 0, borderRadius: 4 };
+      return { label: cfgLabel, data: rawData, _rawData: rawData, _wilsonData: wilsonData, backgroundColor: color.bg, borderColor: color.bg, borderWidth: 0, borderRadius: 4 };
     });
 
     const canvasId = `bar-${agentId}-${escHtml(groupDim)}`;
@@ -438,57 +730,70 @@ function renderGroupedBarChart(group: AgentGroup): string {
       .filter(Boolean)
       .join("\n");
 
+    const viewToggle = matrixHtml ? `<button
+        class="view-toggle text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+        data-agent="${agentId}" data-dim="${escHtml(groupDim)}"
+        onclick="switchView('${agentId}', '${escHtml(groupDim)}')"
+      >Table</button>` : "";
+
     return `<div class="chart-view" data-agent="${agentId}" data-dim="${escHtml(groupDim)}" style="display:${isActive ? "block" : "none"}">
-      <div class="mb-4">
-        <div class="text-xs text-zinc-600 uppercase tracking-wider mb-1">grouped by ${escHtml(groupDim)}</div>
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-xs text-zinc-600 uppercase tracking-wider">grouped by ${escHtml(groupDim)}</div>
+        ${viewToggle}
       </div>
-      <div style="position:relative;height:280px">
-        <canvas id="${canvasId}"></canvas>
+      <div class="bar-view" data-agent="${agentId}" data-dim="${escHtml(groupDim)}">
+        <div style="position:relative;height:280px">
+          <canvas id="${canvasId}"></canvas>
+        </div>
+        <script>
+          (function() {
+            var chart = new Chart(document.getElementById('${canvasId}'), {
+              type: 'bar',
+              data: { labels: ${JSON.stringify(labels)}, datasets: ${JSON.stringify(datasets)} },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { labels: { color: '#a1a1aa', font: { family: 'ui-monospace, monospace', size: 10 }, boxWidth: 12, padding: 16 } },
+                  tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y + '%'; } } }
+                },
+                scales: {
+                  x: { ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 } }, grid: { color: '#27272a' } },
+                  y: { min: 0, max: 100, ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 }, callback: function(v) { return v + '%'; } }, grid: { color: '#27272a' } }
+                }
+              }
+            });
+            window.__agestCharts['${canvasId}'] = chart;
+          })();
+        </script>
+        <div class="mt-4 pt-3 border-t border-zinc-800/50 space-y-1">
+          ${versionRef}
+        </div>
       </div>
-      <script>
-        new Chart(document.getElementById('${canvasId}'), {
-          type: 'bar',
-          data: { labels: ${JSON.stringify(labels)}, datasets: ${JSON.stringify(datasets)} },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { labels: { color: '#a1a1aa', font: { family: 'ui-monospace, monospace', size: 10 }, boxWidth: 12, padding: 16 } },
-              tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y + '%'; } } }
-            },
-            scales: {
-              x: { ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 } }, grid: { color: '#27272a' } },
-              y: { min: 0, max: 100, ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 }, callback: function(v) { return v + '%'; } }, grid: { color: '#27272a' } }
-            }
-          }
-        });
-      </script>
-      <div class="mt-4 pt-3 border-t border-zinc-800/50 space-y-1">
-        ${versionRef}
-      </div>
+      ${matrixHtml ? `<div class="table-view" data-agent="${agentId}" data-dim="${escHtml(groupDim)}" style="display:none">${matrixHtml}</div>` : ""}
     </div>`;
   });
 
-  // Dimension toggle tabs
-  const tabs = varying
-    .map((dim, i) => {
-      const active = i === 0;
-      return `<button
-        class="dim-tab px-3 py-1.5 text-xs rounded-md transition-colors ${active ? "bg-zinc-700 text-zinc-200" : "bg-zinc-800/50 text-zinc-500 hover:text-zinc-300"}"
-        data-agent="${agentId}"
-        data-dim="${escHtml(dim)}"
-        onclick="switchDim('${agentId}', '${escHtml(dim)}')"
-      >${escHtml(dim)}</button>`;
-    })
+  // Primary dimension selector
+  const dimOptions = varying
+    .map((dim) => `<option value="${escHtml(dim)}">${escHtml(dim)}</option>`)
     .join("\n");
+
+  const dimSelector = varying.length > 1
+    ? `<div class="flex items-center gap-2">
+        <span class="text-[10px] text-zinc-600 uppercase tracking-wider">Group by</span>
+        <select class="bg-zinc-800 text-zinc-300 text-xs border border-zinc-700 rounded px-2 py-1"
+          onchange="switchDim('${agentId}', this.value)">
+          ${dimOptions}
+        </select>
+      </div>`
+    : `<span class="text-[10px] text-zinc-600">grouped by ${escHtml(varying[0])}</span>`;
 
   return `
     <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-4">
       <div class="flex items-center justify-between mb-5">
         <span class="text-xs text-zinc-600 uppercase tracking-wider">success rate</span>
-        <div class="flex gap-1.5">
-          ${tabs}
-        </div>
+        ${dimSelector}
       </div>
       ${charts.join("\n")}
     </div>`;
@@ -639,28 +944,33 @@ function renderScatterPlot(group: AgentGroup): string {
   const allDims = [...new Set(reports.flatMap((r) => Object.keys(r.dimensions ?? {})))];
 
   // Group data points by model
-  const byModel = new Map<string, Array<{ x: number; y: number; label: string }>>();
+  const byModel = new Map<string, { raw: Array<{ x: number; y: number; label: string }>; wilson: Array<{ x: number; y: number; label: string }> }>();
   for (const r of reports) {
     const model = r.dimensions?.["model"] ?? r.model ?? "?";
     const avgDurSec = r.totalCases > 0 ? +(r.duration / r.totalCases / 1000).toFixed(2) : 0;
     const accuracy = +(r.successRate * 100).toFixed(1);
+    const wilsonAccuracy = +(wilsonLowerBound(r.successRate, r.totalCases) * 100).toFixed(1);
     const configLabel = allDims
       .filter((d) => d !== "model")
       .map((d) => `${d}: ${r.dimensions?.[d] ?? "?"}`)
       .join(", ");
 
-    const arr = byModel.get(model) ?? [];
-    arr.push({ x: avgDurSec, y: accuracy, label: configLabel });
-    byModel.set(model, arr);
+    const entry = byModel.get(model) ?? { raw: [], wilson: [] };
+    entry.raw.push({ x: avgDurSec, y: accuracy, label: configLabel });
+    entry.wilson.push({ x: avgDurSec, y: wilsonAccuracy, label: configLabel });
+    byModel.set(model, entry);
   }
 
   const uniqueModels = [...byModel.keys()];
   const datasets = uniqueModels.map((model, i) => {
     const color = SERIES_COLORS[i % SERIES_COLORS.length];
     const short = model.split("/").pop()?.slice(0, 24) ?? model.slice(0, 24);
+    const entry = byModel.get(model)!;
     return {
       label: short,
-      data: byModel.get(model)!,
+      data: entry.raw,
+      _rawScatter: entry.raw,
+      _wilsonScatter: entry.wilson,
       backgroundColor: color.bg,
       borderColor: color.text,
       pointRadius: 7,
@@ -668,7 +978,7 @@ function renderScatterPlot(group: AgentGroup): string {
     };
   });
 
-  const allX = [...byModel.values()].flat().map((p) => p.x);
+  const allX = [...byModel.values()].flatMap((e) => e.raw).map((p) => p.x);
   const midX = allX.length > 0 ? +((Math.min(...allX) + Math.max(...allX)) / 2).toFixed(2) : 0;
 
   const agentId = escHtml(group.label).replace(/\s+/g, "-").toLowerCase();
@@ -683,85 +993,88 @@ function renderScatterPlot(group: AgentGroup): string {
         <canvas id="${canvasId}"></canvas>
       </div>
       <script>
-        new Chart(document.getElementById('${canvasId}'), {
-          type: 'scatter',
-          data: { datasets: ${JSON.stringify(datasets)} },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { labels: { color: '#a1a1aa', font: { family: 'ui-monospace, monospace', size: 10 }, boxWidth: 12, padding: 16 } },
-              tooltip: {
-                callbacks: {
-                  label: function(ctx) {
-                    var p = ctx.raw;
-                    var lines = [ctx.dataset.label + ': ' + p.y + '% accuracy, ' + p.x.toFixed(1) + 's/case'];
-                    if (p.label) lines.push(p.label);
-                    return lines;
+        (function() {
+          var chart = new Chart(document.getElementById('${canvasId}'), {
+            type: 'scatter',
+            data: { datasets: ${JSON.stringify(datasets)} },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { labels: { color: '#a1a1aa', font: { family: 'ui-monospace, monospace', size: 10 }, boxWidth: 12, padding: 16 } },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      var p = ctx.raw;
+                      var lines = [ctx.dataset.label + ': ' + p.y + '% accuracy, ' + p.x.toFixed(1) + 's/case'];
+                      if (p.label) lines.push(p.label);
+                      return lines;
+                    }
                   }
+                }
+              },
+              scales: {
+                x: {
+                  title: { display: true, text: 'avg duration per case (s)', color: '#71717a', font: { family: 'ui-monospace, monospace', size: 11 } },
+                  ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 } },
+                  grid: { color: '#27272a' }
+                },
+                y: {
+                  min: 0, max: 100,
+                  title: { display: true, text: 'accuracy (%)', color: '#71717a', font: { family: 'ui-monospace, monospace', size: 11 } },
+                  ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 }, callback: function(v) { return v + '%'; } },
+                  grid: { color: '#27272a' }
                 }
               }
             },
-            scales: {
-              x: {
-                title: { display: true, text: 'avg duration per case (s)', color: '#71717a', font: { family: 'ui-monospace, monospace', size: 11 } },
-                ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 } },
-                grid: { color: '#27272a' }
-              },
-              y: {
-                min: 0, max: 100,
-                title: { display: true, text: 'accuracy (%)', color: '#71717a', font: { family: 'ui-monospace, monospace', size: 11 } },
-                ticks: { color: '#71717a', font: { family: 'ui-monospace, monospace', size: 10 }, callback: function(v) { return v + '%'; } },
-                grid: { color: '#27272a' }
+            plugins: [{
+              id: 'quadrantLines',
+              afterDraw: function(chart) {
+                var ctx = chart.ctx;
+                var area = chart.chartArea;
+                var xScale = chart.scales.x;
+                var yScale = chart.scales.y;
+                var midXPx = xScale.getPixelForValue(${midX});
+                var midYPx = yScale.getPixelForValue(50);
+
+                ctx.save();
+                ctx.setLineDash([6, 4]);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(113, 113, 122, 0.4)';
+
+                ctx.beginPath();
+                ctx.moveTo(midXPx, area.top);
+                ctx.lineTo(midXPx, area.bottom);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(area.left, midYPx);
+                ctx.lineTo(area.right, midYPx);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
+                ctx.font = '10px ui-monospace, monospace';
+                ctx.fillStyle = 'rgba(113, 113, 122, 0.5)';
+
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText('Ideal', area.left + 8, area.top + 8);
+
+                ctx.textAlign = 'right';
+                ctx.fillText('Smart but slow', area.right - 8, area.top + 8);
+
+                ctx.textBaseline = 'bottom';
+                ctx.fillText('Dumb and slow', area.right - 8, area.bottom - 8);
+
+                ctx.textAlign = 'left';
+                ctx.fillText('Dumb and fast', area.left + 8, area.bottom - 8);
+
+                ctx.restore();
               }
-            }
-          },
-          plugins: [{
-            id: 'quadrantLines',
-            afterDraw: function(chart) {
-              var ctx = chart.ctx;
-              var area = chart.chartArea;
-              var xScale = chart.scales.x;
-              var yScale = chart.scales.y;
-              var midXPx = xScale.getPixelForValue(${midX});
-              var midYPx = yScale.getPixelForValue(50);
-
-              ctx.save();
-              ctx.setLineDash([6, 4]);
-              ctx.lineWidth = 1;
-              ctx.strokeStyle = 'rgba(113, 113, 122, 0.4)';
-
-              ctx.beginPath();
-              ctx.moveTo(midXPx, area.top);
-              ctx.lineTo(midXPx, area.bottom);
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.moveTo(area.left, midYPx);
-              ctx.lineTo(area.right, midYPx);
-              ctx.stroke();
-
-              ctx.setLineDash([]);
-              ctx.font = '10px ui-monospace, monospace';
-              ctx.fillStyle = 'rgba(113, 113, 122, 0.5)';
-
-              ctx.textAlign = 'left';
-              ctx.textBaseline = 'top';
-              ctx.fillText('Ideal', area.left + 8, area.top + 8);
-
-              ctx.textAlign = 'right';
-              ctx.fillText('Smart but slow', area.right - 8, area.top + 8);
-
-              ctx.textBaseline = 'bottom';
-              ctx.fillText('Dumb and slow', area.right - 8, area.bottom - 8);
-
-              ctx.textAlign = 'left';
-              ctx.fillText('Dumb and fast', area.left + 8, area.bottom - 8);
-
-              ctx.restore();
-            }
-          }]
-        });
+            }]
+          });
+          window.__agestCharts['${canvasId}'] = chart;
+        })();
       </script>
     </div>`;
 }
@@ -843,13 +1156,131 @@ function renderSingleRun(report: ParsedReport): string {
     </div>`;
 }
 
+function renderDebugPanel(group: AgentGroup): string {
+  // Collect all failed cases across all runs, with dimension context
+  const failures: Array<{
+    prompt: string;
+    reason?: string;
+    response?: string;
+    suite?: string;
+    dims: string;
+  }> = [];
+
+  for (const run of group.runs) {
+    const r = run.report;
+    const dimTags = Object.entries(r.dimensions ?? {})
+      .map(([k, v]) => {
+        const short = v.length > 20 ? v.slice(0, 19) + "…" : v;
+        return `${k}:${short}`;
+      })
+      .join(" ");
+
+    // Top-level failed cases
+    for (const fc of r.failedCases) {
+      failures.push({ prompt: fc.prompt, reason: fc.reason, response: fc.response, dims: dimTags });
+    }
+
+    // Suite-level failed cases (may overlap with top-level, dedupe by prompt+dims)
+    if (r.suites) {
+      for (const s of r.suites) {
+        for (const fc of s.failedCases) {
+          const alreadyAdded = failures.some((f) => f.prompt === fc.prompt && f.dims === dimTags);
+          if (!alreadyAdded) {
+            failures.push({ prompt: fc.prompt, reason: fc.reason, response: fc.response, suite: s.name, dims: dimTags });
+          } else {
+            // Enrich existing entry with suite name
+            const existing = failures.find((f) => f.prompt === fc.prompt && f.dims === dimTags);
+            if (existing && !existing.suite) existing.suite = s.name;
+            // Enrich with response if missing at top-level
+            if (existing && !existing.response && fc.response) existing.response = fc.response;
+          }
+        }
+      }
+    }
+  }
+
+  if (failures.length === 0) return "";
+
+  // Group by suite
+  const suiteOrder: string[] = [];
+  const bySuite = new Map<string, typeof failures>();
+  for (const f of failures) {
+    const key = f.suite ?? "__none__";
+    if (!bySuite.has(key)) {
+      suiteOrder.push(key);
+      bySuite.set(key, []);
+    }
+    bySuite.get(key)!.push(f);
+  }
+
+  const renderFailure = (f: typeof failures[0]) => {
+    const promptShort = f.prompt.length > 70 ? f.prompt.slice(0, 67) + "…" : f.prompt;
+    const reasonShort = f.reason
+      ? `<span class="text-red-400/60 text-[10px] ml-2">${escHtml(f.reason.length > 50 ? f.reason.slice(0, 47) + "…" : f.reason)}</span>`
+      : "";
+
+    const responseHtml = f.response
+      ? escHtml(f.response).replace(/\n/g, "<br>")
+      : `<span class="text-zinc-700">no response captured</span>`;
+
+    return `
+      <details class="border-t border-zinc-800/50">
+        <summary class="py-2.5 cursor-pointer select-none hover:bg-zinc-800/30 rounded px-2 -mx-2 flex items-center gap-2">
+          <span class="text-red-400 text-xs shrink-0">FAIL</span>
+          <span class="text-xs text-zinc-300 truncate flex-1">${escHtml(promptShort)}</span>
+          ${reasonShort}
+          <span class="text-[10px] text-zinc-700">${escHtml(f.dims)}</span>
+        </summary>
+        <div class="pb-3 px-2 -mx-2 space-y-2">
+          <div>
+            <div class="text-[10px] text-zinc-600 uppercase mb-1">Input</div>
+            <div class="text-xs text-zinc-300 bg-zinc-800/50 rounded px-3 py-2">${escHtml(f.prompt)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-zinc-600 uppercase mb-1">Output</div>
+            <div class="text-xs text-zinc-400 bg-zinc-800/50 rounded px-3 py-2 max-h-48 overflow-y-auto">${responseHtml}</div>
+          </div>
+          ${f.reason ? `<div><div class="text-[10px] text-zinc-600 uppercase mb-1">Reason</div><div class="text-xs text-red-400/80">${escHtml(f.reason)}</div></div>` : ""}
+        </div>
+      </details>`;
+  };
+
+  const rows = suiteOrder.map((key) => {
+    const items = bySuite.get(key)!;
+    const label = key === "__none__" ? "no suite" : key;
+    return `
+      <div class="mb-3 last:mb-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">${escHtml(label)}</span>
+          <span class="text-[10px] text-zinc-700">${items.length}</span>
+        </div>
+        <div class="pl-2 border-l border-zinc-800">
+          ${items.map(renderFailure).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-4">
+      <div class="flex items-center justify-between mb-4">
+        <span class="text-xs text-zinc-600 uppercase tracking-wider">failed cases</span>
+        <span class="text-xs text-zinc-600">${failures.length} failure${failures.length !== 1 ? "s" : ""}</span>
+      </div>
+      <div>
+        ${rows}
+      </div>
+    </div>`;
+}
+
 function renderAgentSection(group: AgentGroup): string {
+  const radarHtml = renderRadarChart(group);
   const chartHtml = renderGroupedBarChart(group);
   const scatterHtml = renderScatterPlot(group);
+  const debugHtml = renderDebugPanel(group);
 
   // When there are no comparative charts, show a single-run summary card
   const singleRunHtml =
-    !chartHtml && !scatterHtml && group.runs.length > 0
+    !chartHtml && !scatterHtml && !radarHtml && group.runs.length > 0
       ? renderSingleRun(group.runs[0].report)
       : "";
 
@@ -859,7 +1290,9 @@ function renderAgentSection(group: AgentGroup): string {
 
     ${chartHtml}
     ${scatterHtml}
+    ${radarHtml}
     ${singleRunHtml}
+    ${debugHtml}
   </section>`;
 }
 
@@ -880,16 +1313,57 @@ function generateHTML(groups: AgentGroup[], totalReports: number): string {
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
+    window.__agestCharts = {};
+    window.__agestWilson = false;
+
+    function toggleWilson() {
+      window.__agestWilson = !window.__agestWilson;
+      var useWilson = window.__agestWilson;
+      var btn = document.getElementById('wilson-toggle');
+      if (btn) {
+        btn.className = useWilson
+          ? 'px-3 py-1 text-xs rounded-full border transition-colors bg-violet-600 border-violet-500 text-violet-100'
+          : 'px-3 py-1 text-xs rounded-full border transition-colors bg-zinc-800/50 border-zinc-700 text-zinc-500 hover:text-zinc-300';
+        btn.textContent = useWilson ? 'Wilson CI (95%)' : 'Raw';
+      }
+      // Update all Chart.js instances
+      Object.values(window.__agestCharts).forEach(function(chart) {
+        chart.data.datasets.forEach(function(ds) {
+          if (ds._rawData && ds._wilsonData) {
+            ds.data = useWilson ? ds._wilsonData : ds._rawData;
+          }
+          // Scatter plot: swap y values
+          if (ds._rawScatter && ds._wilsonScatter) {
+            ds.data = useWilson ? ds._wilsonScatter : ds._rawScatter;
+          }
+        });
+        chart.update();
+      });
+      // Update matrix view cells
+      document.querySelectorAll('[data-wilson]').forEach(function(el) {
+        el.textContent = useWilson ? el.getAttribute('data-wilson') : el.getAttribute('data-raw');
+      });
+    }
+
+    function switchView(agent, dim) {
+      var barEl = document.querySelector('.bar-view[data-agent="' + agent + '"][data-dim="' + dim + '"]');
+      var tableEl = document.querySelector('.table-view[data-agent="' + agent + '"][data-dim="' + dim + '"]');
+      var btn = document.querySelector('.view-toggle[data-agent="' + agent + '"][data-dim="' + dim + '"]');
+      if (!barEl || !tableEl || !btn) return;
+      var showingTable = tableEl.style.display !== 'none';
+      barEl.style.display = showingTable ? 'block' : 'none';
+      tableEl.style.display = showingTable ? 'none' : 'block';
+      btn.textContent = showingTable ? 'Table' : 'Chart';
+    }
+
     function switchDim(agent, dim) {
       document.querySelectorAll('.chart-view[data-agent="' + agent + '"]').forEach(el => {
         el.style.display = el.dataset.dim === dim ? 'block' : 'none';
       });
-      document.querySelectorAll('.dim-tab[data-agent="' + agent + '"]').forEach(el => {
-        if (el.dataset.dim === dim) {
-          el.className = el.className.replace('bg-zinc-800/50 text-zinc-500', 'bg-zinc-700 text-zinc-200');
-        } else {
-          el.className = el.className.replace('bg-zinc-700 text-zinc-200', 'bg-zinc-800/50 text-zinc-500');
-        }
+    }
+    function filterRadarModel(agent, model) {
+      document.querySelectorAll('.radar-model-view[data-agent="' + agent + '"]').forEach(el => {
+        el.style.display = el.dataset.model === model ? 'block' : 'none';
       });
     }
   </script>
@@ -899,7 +1373,11 @@ function generateHTML(groups: AgentGroup[], totalReports: number): string {
 
     <header class="mb-10">
       <h1 class="text-2xl font-bold tracking-tight">agest</h1>
-      <p class="text-zinc-500 text-sm mt-1">${totalReports} report${totalReports !== 1 ? "s" : ""} &middot; generated ${generated}</p>
+      <div class="flex items-center gap-3 mt-1">
+        <p class="text-zinc-500 text-sm">${totalReports} report${totalReports !== 1 ? "s" : ""} &middot; generated ${generated}</p>
+        <button id="wilson-toggle" onclick="toggleWilson()" title="Wilson score lower bound (95% CI) — adjusts for sample size"
+          class="px-3 py-1 text-xs rounded-full border transition-colors bg-zinc-800/50 border-zinc-700 text-zinc-500 hover:text-zinc-300">Raw</button>
+      </div>
     </header>
 
     ${sections}
@@ -994,6 +1472,7 @@ async function main() {
         runs,
         varyingDims,
         controlledPairs,
+        diffEntries,
       };
     })
   );

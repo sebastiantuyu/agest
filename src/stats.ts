@@ -252,6 +252,8 @@ async function main() {
   const args = process.argv.slice(2);
   const agentFlagIdx = args.indexOf("--agent");
   const agentFilter = agentFlagIdx !== -1 ? args[agentFlagIdx + 1] : undefined;
+  const modelFlagIdx = args.indexOf("--model");
+  const modelFilter = modelFlagIdx !== -1 ? args[modelFlagIdx + 1] : undefined;
 
   if (args.includes("--purge")) {
     await purge(process.cwd());
@@ -286,8 +288,18 @@ async function main() {
     }
   }
 
+  if (modelFilter) {
+    reports = reports.filter(
+      (r) => r.model.toLowerCase() === modelFilter.toLowerCase()
+    );
+    if (reports.length === 0) {
+      console.log(`\n  No reports found for model "${modelFilter}".\n`);
+      return;
+    }
+  }
+
   console.log("\n" + "━".repeat(W));
-  const filterLabel = agentFilter ? `  ·  agent: ${agentFilter}` : "";
+  const filterLabel = (agentFilter ? `  ·  agent: ${agentFilter}` : "") + (modelFilter ? `  ·  model: ${modelFilter}` : "");
   console.log(
     `  AGEST STATS  ·  ${reports.length} report${reports.length !== 1 ? "s" : ""} found${filterLabel}`
   );
@@ -330,6 +342,30 @@ async function main() {
     })),
     1
   );
+
+  // Suite breakdown (aggregate across all reports that have suites)
+  const withSuites = reports.filter((r) => r.suites && r.suites.length > 0);
+  if (withSuites.length > 0) {
+    const suiteAgg = new Map<string, number[]>();
+    for (const r of withSuites) {
+      for (const s of r.suites!) {
+        const arr = suiteAgg.get(s.name) ?? [];
+        arr.push(s.successRate);
+        suiteAgg.set(s.name, arr);
+      }
+    }
+    const suiteRows: Row[] = [...suiteAgg.entries()]
+      .map(([name, rates]) => {
+        const avgRate = rates.reduce((a, b) => a + b, 0) / rates.length;
+        return {
+          label: name,
+          value: avgRate,
+          display: `${(avgRate * 100).toFixed(0).padStart(3)}%`,
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+    printSection("Suite Breakdown", suiteRows, 1);
+  }
 
   // Token charts (only when data is present)
   const withTokens = agg.filter(
