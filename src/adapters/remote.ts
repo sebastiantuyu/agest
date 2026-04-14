@@ -21,7 +21,7 @@ export interface RemoteAdapterOptions {
    * When omitted the adapter tries common shapes:
    * - `{ text }` / `{ response }` / `{ output }` / `{ message }` / plain string
    */
-  parseResponse?: (body: unknown) => AgentResponse;
+  parseResponse?: <TBody = unknown>(body: TBody) => AgentResponse;
   /**
    * Static metadata for this remote agent.
    * Because the remote endpoint is opaque, metadata like model name,

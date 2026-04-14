@@ -922,7 +922,4 @@ async function main() {
   openBrowser(tmpPath);
 }
 
-main().catch((err) => {
-  console.error("Error:", err.message);
-  process.exit(1);
-});
+export { main };

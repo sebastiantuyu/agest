@@ -10,6 +10,9 @@
   "files": [
     "dist"
   ],
+  "bin": {
+    "agest": "dist/cli.js"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -29,8 +32,8 @@
     "test:coverage": "vitest run --coverage",
     "dev": "tsx examples/basic.test.ts",
     "test:examples": "tsx examples/basic.test.ts && tsx examples/agent.test.ts",
-    "stats": "tsx src/stats.ts",
-    "preview": "tsx src/preview.ts",
+    "stats": "tsx src/cli.ts stats",
+    "preview": "tsx src/cli.ts preview",
     "site:preview": "npx serve site -p 3000",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
