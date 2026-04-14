@@ -116,14 +116,13 @@ npx tsx examples/openrouter.test.ts
 - [x] Remote HTTP adapter for framework-agnostic testing
 - [x] Report persistence to `.reports/` with YAML format
 - [x] Stats CLI with multi-model comparison and dimension analysis
+- [x] Lifecycle hooks: `beforeEach`, `beforeAll`, `afterEach`, `afterAll` supporting sync/async functions
+- [x] Multiple test suites per agent via `suite()` to evaluate different aspects independently
+- [x] Statistical runs: `.runs(n)` per scene with pass rate and Wilson significance scoring
 
 ### Up next
-- [ ] Lifecycle hooks: `beforeEach`, `beforeAll`, `afterEach`, `afterAll` supporting sync/async functions
-- [ ] Multiple test suites per agent to evaluate different aspects independently
-- [ ] Statistical significance scoring based on number of runs per test
 - [ ] Schema validation: `toBe.matchingSchema(zodSchema)`
 - [ ] Semantic similarity: `toBe.semanticallySimilarTo(text, threshold)`
-- [ ] Statistical runs: `.runs(n)` per scene with mean/stddev reporting
 - [ ] Vercel AI SDK adapter
 - [ ] Snapshot regression: diff current run against a saved baseline
 
