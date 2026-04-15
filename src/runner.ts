@@ -47,7 +47,7 @@ async function executeSingleRun(
 
   try {
     const start = performance.now();
-    let input = scene.prompt;
+    const input = scene.prompt;
     for (let t = 0; t < turns; t++) {
       let timer: ReturnType<typeof setTimeout>;
       response = await Promise.race([
@@ -57,7 +57,6 @@ async function executeSingleRun(
         }),
       ]);
       if (response.executionError) break;
-      if (t < turns - 1) input = response.text;
     }
     duration = performance.now() - start;
   } catch (err) {
@@ -123,10 +122,11 @@ export async function executeScene(
   globalTimeout?: number,
   judgeConfig?: JudgeConfig,
   globalTurns?: number,
+  globalRuns?: number,
 ): Promise<SceneResult> {
   const timeoutMs = scene.timeout ?? globalTimeout ?? DEFAULT_SCENE_TIMEOUT;
   const turns = scene.turns ?? globalTurns ?? 1;
-  const numRuns = scene.runs ?? 1;
+  const numRuns = scene.runs ?? globalRuns ?? 1;
 
   // Single run — original fast path
   if (numRuns <= 1) {

@@ -119,7 +119,7 @@ export class AgentContext {
         await hook();
       }
 
-      const result = await executeScene(this._executor, scene, config.timeout, config.judge, config.turns);
+      const result = await executeScene(this._executor, scene, config.timeout, config.judge, config.turns, config.runs);
       orderedResults[i] = result;
 
       // Run afterEach hooks

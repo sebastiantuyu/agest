@@ -282,10 +282,11 @@ describe("AgentContext", () => {
       expect(mockedExecuteScene).toHaveBeenCalled();
     });
 
-    it("passes config.timeout and config.judge and config.turns to executeScene", async () => {
+    it("passes config.timeout, config.judge, config.turns and config.runs to executeScene", async () => {
       mockedLoadConfig.mockResolvedValue({
         timeout: 5000,
         turns: 2,
+        runs: 3,
         judge: { model: "judge-model" },
       });
 
@@ -298,7 +299,8 @@ describe("AgentContext", () => {
         expect.anything(),
         5000,
         { model: "judge-model" },
-        2
+        2,
+        3
       );
     });
   });

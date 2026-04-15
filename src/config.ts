@@ -17,6 +17,7 @@ export interface AgestConfig {
   parallelism?: number;
   timeout?: number;
   turns?: number;
+  runs?: number;
   judge?: JudgeConfig;
 }
 

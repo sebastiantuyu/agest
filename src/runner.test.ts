@@ -112,19 +112,27 @@ describe("executeScene", () => {
       expect(executor).toHaveBeenCalledTimes(3);
     });
 
-    it("feeds response.text as input to subsequent turns", async () => {
+    it("sends the original prompt on every turn", async () => {
       const executor = vi.fn()
         .mockResolvedValueOnce({ text: "turn1" })
         .mockResolvedValueOnce({ text: "turn2" });
       await executeScene(executor, makeScene({ turns: 2 }));
       expect(executor).toHaveBeenNthCalledWith(1, "test prompt");
-      expect(executor).toHaveBeenNthCalledWith(2, "turn1");
+      expect(executor).toHaveBeenNthCalledWith(2, "test prompt");
     });
 
     it("falls back to globalTurns", async () => {
       const executor = vi.fn().mockResolvedValue({ text: "r" });
       await executeScene(executor, makeScene(), undefined, undefined, 2);
       expect(executor).toHaveBeenCalledTimes(2);
+    });
+
+    it("falls back to globalRuns when scene.runs is not set", async () => {
+      const executor = vi.fn().mockResolvedValue({ text: "ok" });
+      const result = await executeScene(executor, makeScene(), undefined, undefined, undefined, 3);
+      expect(executor).toHaveBeenCalledTimes(3);
+      expect(result.runs).toHaveLength(3);
+      expect(result.passRate).toBe(1);
     });
 
     it("stops early if response.executionError is set mid-turn", async () => {
