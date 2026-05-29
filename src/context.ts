@@ -11,6 +11,7 @@ import { formatReport, writeReport, writeDiffEntry } from "./reporter";
 import { logger, c } from "./logger";
 import { loadConfig } from "./config";
 import { setPricingOverrides } from "./pricing";
+import { renderTerminalWaterfall } from "./waterfall";
 import { PromisePool } from "@supercharge/promise-pool";
 
 export class SceneBuilder {
@@ -151,6 +152,19 @@ export class AgentContext {
         const sig = result.statisticalSignificance;
         const sigColor = sig >= 0.95 ? c.green : sig >= 0.80 ? c.yellow : c.red;
         logger.info(`${indent}       ${c.dim("significance:")} ${sigColor(`${(sig * 100).toFixed(1)}%`)} ${c.dim(`(pass rate: ${((result.passRate ?? 0) * 100).toFixed(1)}%)`)}`);
+      }
+
+      if (result.events && result.events.length > 0) {
+        const costLabel = result.costUsd != null
+          ? ` ${c.dim("·")} ${c.green(`$${Number(result.costUsd.toFixed(4))}`)}`
+          : "";
+        const tokLabel = result.tokens
+          ? ` ${c.dim(`(${result.tokens.input}→${result.tokens.output} tok)`)}`
+          : "";
+        logger.info(`${indent}       ${c.dim("waterfall:")}${tokLabel}${costLabel}`);
+        for (const line of renderTerminalWaterfall(result.events, { indent: `${indent}       ` })) {
+          logger.info(line);
+        }
       }
 
       logger.debug(`${indent}       response: ${result.response.text?.slice(0, 120)}`);

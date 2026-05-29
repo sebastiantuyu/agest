@@ -10,6 +10,27 @@ export interface ParsedSuiteResult {
   failedCases: Array<{ prompt: string; reason?: string; response?: string }>;
 }
 
+export interface ParsedTimelineEvent {
+  kind: "model" | "tool";
+  name: string;
+  startMs: number;
+  durationMs: number;
+  tokens?: { input: number; output: number };
+  costUsd?: number;
+  costSource?: string;
+  runIndex?: number;
+  error?: string;
+}
+
+export interface ParsedScene {
+  prompt: string;
+  durationMs?: number;
+  tokens?: { input: number; output: number };
+  costUsd?: number;
+  costSource?: string;
+  timeline?: ParsedTimelineEvent[];
+}
+
 export interface ParsedReport {
   name?: string;
   systemPromptHash?: string;
@@ -25,6 +46,10 @@ export interface ParsedReport {
   timestamp: string;
   averageInputTokensPerCase?: number;
   averageOutputTokensPerCase?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  totalCostUsd?: number;
+  scenes?: ParsedScene[];
   suites?: ParsedSuiteResult[];
   source: string;
 }
@@ -148,6 +173,100 @@ export function parseSuites(content: string): ParsedSuiteResult[] | undefined {
   return suites.length > 0 ? suites : undefined;
 }
 
+function parseTokens(raw: string): { input: number; output: number } | undefined {
+  const m = raw.match(/input:\s*(\d+),\s*output:\s*(\d+)/);
+  if (!m) return undefined;
+  return { input: parseInt(m[1], 10), output: parseInt(m[2], 10) };
+}
+
+/**
+ * Parse the `scenes:` block (per-scene tokens/cost + timeline waterfall) from a
+ * report. The emitted format is fixed (see reporter.ts `renderSceneObservability`),
+ * so this hand-parses by indentation: scenes start at 8 spaces, scene fields at
+ * 10, timeline events at 14, event fields at 16.
+ */
+export function parseScenes(content: string): ParsedScene[] | undefined {
+  const lines = content.split("\n");
+  const startIdx = lines.findIndex((l) => l === "    scenes:");
+  if (startIdx === -1) return undefined;
+
+  const scenes: ParsedScene[] = [];
+  let scene: ParsedScene | undefined;
+  let inTimeline = false;
+  let event: ParsedTimelineEvent | undefined;
+
+  const pushEvent = () => {
+    if (event && scene) {
+      (scene.timeline ??= []).push(event);
+      event = undefined;
+    }
+  };
+  const pushScene = () => {
+    pushEvent();
+    if (scene) scenes.push(scene);
+    scene = undefined;
+    inTimeline = false;
+  };
+
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === "") continue;
+    const indent = line.length - line.trimStart().length;
+    // A new top-level agent field (<= 4 spaces, not part of scenes) ends the block.
+    if (indent <= 4) break;
+
+    const sceneStart = line.match(/^        - prompt: "(.*)"$/);
+    if (sceneStart) {
+      pushScene();
+      scene = { prompt: sceneStart[1].replace(/\\"/g, '"').replace(/\\n/g, "\n") };
+      continue;
+    }
+    if (!scene) continue;
+
+    const eventStart = line.match(/^              - kind: (model|tool)$/);
+    if (eventStart) {
+      pushEvent();
+      event = { kind: eventStart[1] as "model" | "tool", name: "", startMs: 0, durationMs: 0 };
+      inTimeline = true;
+      continue;
+    }
+
+    if (line.match(/^          timeline:$/)) {
+      inTimeline = true;
+      continue;
+    }
+
+    const trimmed = line.trim();
+    const target = inTimeline && event ? "event" : "scene";
+
+    const kv = trimmed.match(/^([a-z_]+):\s*(.*)$/);
+    if (!kv) continue;
+    const [, key, value] = kv;
+
+    if (target === "event" && event) {
+      switch (key) {
+        case "name": event.name = value.replace(/^"|"$/g, "").replace(/\\"/g, '"'); break;
+        case "start_ms": event.startMs = parseFloat(value); break;
+        case "duration_ms": event.durationMs = parseFloat(value); break;
+        case "tokens": event.tokens = parseTokens(value); break;
+        case "cost_usd": event.costUsd = parseFloat(value); break;
+        case "cost_source": event.costSource = value; break;
+        case "run_index": event.runIndex = parseInt(value, 10); break;
+        case "error": event.error = value.replace(/^"|"$/g, "").replace(/\\"/g, '"'); break;
+      }
+    } else if (scene) {
+      switch (key) {
+        case "duration_ms": scene.durationMs = parseFloat(value); break;
+        case "tokens": scene.tokens = parseTokens(value); break;
+        case "cost_usd": scene.costUsd = parseFloat(value); break;
+        case "cost_source": scene.costSource = value; break;
+      }
+    }
+  }
+  pushScene();
+  return scenes.length > 0 ? scenes : undefined;
+}
+
 export function parseReport(content: string, source: string): ParsedReport {
   const num = (key: string, fallback = 0) =>
     parseFloat(extractField(content, key) ?? String(fallback));
@@ -189,9 +308,18 @@ export function parseReport(content: string, source: string): ParsedReport {
     timestamp: extractField(content, "timestamp") ?? "",
     averageInputTokensPerCase: avgIn != null ? parseFloat(avgIn) : undefined,
     averageOutputTokensPerCase: avgOut != null ? parseFloat(avgOut) : undefined,
+    totalInputTokens: optNum("total_input_tokens"),
+    totalOutputTokens: optNum("total_output_tokens"),
+    totalCostUsd: optNum("total_cost_usd"),
+    scenes: parseScenes(content),
     suites: parseSuites(content),
     source,
   };
+
+  function optNum(key: string): number | undefined {
+    const v = extractField(content, key);
+    return v != null ? parseFloat(v) : undefined;
+  }
 }
 
 export async function findReports(dir: string, depth = 0): Promise<string[]> {
