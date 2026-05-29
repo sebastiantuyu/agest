@@ -49,13 +49,18 @@ async function executeSingleRun(
     const start = performance.now();
     const input = scene.prompt;
     for (let t = 0; t < turns; t++) {
-      let timer: ReturnType<typeof setTimeout>;
-      response = await Promise.race([
-        executor(input).finally(() => clearTimeout(timer)),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`Scene timed out after ${timeoutMs}ms`)), timeoutMs);
-        }),
-      ]);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        response = await executor(input, { signal: controller.signal });
+      } catch (err) {
+        if ((err as Error).name === "AbortError" || controller.signal.aborted) {
+          throw new Error(`Scene timed out after ${timeoutMs}ms`);
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
       if (response.executionError) break;
     }
     duration = performance.now() - start;

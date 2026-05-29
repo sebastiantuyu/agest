@@ -237,6 +237,47 @@ describe("remote adapter — parseResponse override", () => {
   });
 });
 
+describe("remote adapter — abort signal", () => {
+  it("forwards signal from executor options to fetch", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ text: "hi" }));
+    const executor = remote("http://example.com/api");
+    const controller = new AbortController();
+
+    await executor("hello", { signal: controller.signal });
+
+    expect(mockFetch.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it("passes undefined signal when execOptions is not provided", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ text: "hi" }));
+    const executor = remote("http://example.com/api");
+
+    await executor("hello");
+
+    expect(mockFetch.mock.calls[0][1].signal).toBeUndefined();
+  });
+
+  it("surfaces AbortError from fetch as executionError when signal aborts", async () => {
+    mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    });
+    const executor = remote("http://example.com/api");
+    const controller = new AbortController();
+
+    const promise = executor("hello", { signal: controller.signal });
+    controller.abort();
+    const result = await promise;
+
+    expect(result.text).toBe("");
+    expect(result.executionError).toContain("Request failed");
+    expect(result.executionError).toContain("aborted");
+  });
+});
+
 describe("remote adapter — error handling", () => {
   it("returns executionError on network failure", async () => {
     mockFetch.mockRejectedValue(new Error("ECONNREFUSED"));

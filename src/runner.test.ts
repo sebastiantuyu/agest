@@ -62,10 +62,10 @@ describe("executeScene", () => {
     vi.fn().mockResolvedValue(response);
 
   describe("basic execution", () => {
-    it("calls executor with scene prompt", async () => {
+    it("calls executor with scene prompt and signal", async () => {
       const executor = makeExecutor();
       await executeScene(executor, makeScene());
-      expect(executor).toHaveBeenCalledWith("test prompt");
+      expect(executor).toHaveBeenCalledWith("test prompt", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
 
     it("returns SceneResult with passed: true when no assertions", async () => {
@@ -88,7 +88,10 @@ describe("executeScene", () => {
 
     it("returns passed: false when executor exceeds timeout", async () => {
       const executor = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ text: "ok" }), 500))
+        (_input: string, opts?: { signal?: AbortSignal }) => new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve({ text: "ok" }), 500);
+          opts?.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("aborted", "AbortError")); });
+        })
       );
       const result = await executeScene(executor, makeScene({ timeout: 10 }));
       expect(result.passed).toBe(false);
@@ -97,11 +100,44 @@ describe("executeScene", () => {
 
     it("falls back to globalTimeout when scene.timeout is undefined", async () => {
       const executor = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ text: "ok" }), 500))
+        (_input: string, opts?: { signal?: AbortSignal }) => new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve({ text: "ok" }), 500);
+          opts?.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("aborted", "AbortError")); });
+        })
       );
       const result = await executeScene(executor, makeScene(), 10);
       expect(result.passed).toBe(false);
       expect(result.error).toContain("timed out");
+    });
+
+    it("aborts the signal when timeout fires", async () => {
+      let capturedSignal: AbortSignal | undefined;
+      const executor = vi.fn().mockImplementation(
+        (_input: string, opts?: { signal?: AbortSignal }) => {
+          capturedSignal = opts?.signal;
+          return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => resolve({ text: "ok" }), 500);
+            opts?.signal?.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          });
+        }
+      );
+      await executeScene(executor, makeScene({ timeout: 10 }));
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+
+    it("does not abort the signal when executor resolves before timeout", async () => {
+      let capturedSignal: AbortSignal | undefined;
+      const executor = vi.fn().mockImplementation(
+        (_input: string, opts?: { signal?: AbortSignal }) => {
+          capturedSignal = opts?.signal;
+          return Promise.resolve({ text: "ok" });
+        }
+      );
+      await executeScene(executor, makeScene({ timeout: 200 }));
+      expect(capturedSignal?.aborted).toBe(false);
     });
   });
 
@@ -117,8 +153,8 @@ describe("executeScene", () => {
         .mockResolvedValueOnce({ text: "turn1" })
         .mockResolvedValueOnce({ text: "turn2" });
       await executeScene(executor, makeScene({ turns: 2 }));
-      expect(executor).toHaveBeenNthCalledWith(1, "test prompt");
-      expect(executor).toHaveBeenNthCalledWith(2, "test prompt");
+      expect(executor).toHaveBeenNthCalledWith(1, "test prompt", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+      expect(executor).toHaveBeenNthCalledWith(2, "test prompt", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
 
     it("falls back to globalTurns", async () => {

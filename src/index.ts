@@ -10,6 +10,7 @@ export type { AgentExpectation, AgentMatchers } from "./assertions";
 export type { JudgeCriteria } from "./judge";
 export type {
   AgentExecutor,
+  ExecutorOptions,
   AgentResponse,
   AgentReport,
   SceneResult,
