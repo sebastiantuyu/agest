@@ -3,13 +3,44 @@
 import { spawn } from "child_process";
 import { main as stats } from "./stats.js";
 import { main as preview } from "./preview.js";
+import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 
 const command = process.argv[2];
 
+interface ParsedRunArgs {
+  pattern?: string;
+  targets: string[];
+}
+
+function parseRunArgs(args: string[]): ParsedRunArgs {
+  const targets: string[] = [];
+  let pattern: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--pattern" || a === "-p") {
+      pattern = args[++i];
+      if (pattern === undefined) {
+        console.error("  Error: --pattern requires a value");
+        process.exit(1);
+      }
+    } else if (a.startsWith("--pattern=")) {
+      pattern = a.slice("--pattern=".length);
+    } else {
+      targets.push(a);
+    }
+  }
+
+  return { pattern, targets };
+}
+
 async function run() {
-  const files = process.argv.slice(3);
+  const { pattern, targets } = parseRunArgs(process.argv.slice(3));
+  const files = await discoverTestFiles(targets, { pattern });
+
   if (files.length === 0) {
-    console.error("  Usage: agest run <file...>");
+    const effective = pattern ?? DEFAULT_PATTERN;
+    console.error(`  No test files found (pattern: ${effective})`);
     process.exit(1);
   }
 
@@ -38,7 +69,10 @@ if (!command || !commands[command]) {
   Usage: agest <command>
 
   Commands:
-    run        Run test file(s)    agest run tests/*.test.ts
+    run        Run test file(s), directories, or glob patterns
+               agest run tests/                       # walks for ${DEFAULT_PATTERN}
+               agest run src/agest --pattern "**/*.test.ts"
+               agest run "tests/**/*.agest.ts" path/to/file.agest.ts
     stats      Show aggregated test statistics
     preview    Generate an HTML report preview
 `);
