@@ -1,18 +1,28 @@
 #!/usr/bin/env node
 
 import { spawn } from "child_process";
+import { fileURLToPath } from "node:url";
 import { main as stats } from "./stats.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 
-const command = process.argv[2];
-
-interface ParsedRunArgs {
+export interface ParsedRunArgs {
   pattern?: string;
   targets: string[];
 }
 
-function parseRunArgs(args: string[]): ParsedRunArgs {
+/**
+ * Extract the args that follow the command word from a full `process.argv`.
+ * `argv = [execPath, scriptPath, command, ...commandArgs]`, so the command's
+ * args always start at index 3. Capturing them here (once, from the original
+ * argv) avoids re-slicing a mutated argv downstream — the double-shift that
+ * silently dropped a lone `run` target and made discovery scan the whole cwd.
+ */
+export function getCommandArgs(argv: string[]): string[] {
+  return argv.slice(3);
+}
+
+export function parseRunArgs(args: string[]): ParsedRunArgs {
   const targets: string[] = [];
   let pattern: string | undefined;
 
@@ -34,8 +44,8 @@ function parseRunArgs(args: string[]): ParsedRunArgs {
   return { pattern, targets };
 }
 
-async function run() {
-  const { pattern, targets } = parseRunArgs(process.argv.slice(3));
+async function run(args: string[]) {
+  const { pattern, targets } = parseRunArgs(args);
   const files = await discoverTestFiles(targets, { pattern });
 
   if (files.length === 0) {
@@ -58,13 +68,7 @@ async function run() {
   }
 }
 
-const commands: Record<string, () => Promise<void>> = {
-  stats,
-  preview,
-  run,
-};
-
-if (!command || !commands[command]) {
+function printUsage() {
   console.log(`
   Usage: agest <command>
 
@@ -76,13 +80,38 @@ if (!command || !commands[command]) {
     stats      Show aggregated test statistics
     preview    Generate an HTML report preview
 `);
-  process.exit(command ? 1 : 0);
 }
 
-// Forward remaining args so subcommands see them at process.argv[2+]
-process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+const KNOWN_COMMANDS = new Set(["run", "stats", "preview"]);
 
-commands[command]().catch((err) => {
-  console.error("Error:", err.message);
-  process.exit(1);
-});
+export async function main(argv: string[]): Promise<void> {
+  const command = argv[2];
+  const commandArgs = getCommandArgs(argv);
+
+  if (!command || !KNOWN_COMMANDS.has(command)) {
+    printUsage();
+    process.exit(command ? 1 : 0);
+  }
+
+  if (command === "run") {
+    await run(commandArgs);
+    return;
+  }
+
+  // stats/preview read their args from `process.argv.slice(2)`, so normalize
+  // argv to drop the command word before handing off.
+  process.argv = [argv[0], argv[1], ...commandArgs];
+  if (command === "stats") await stats();
+  else await preview();
+}
+
+// Only run as a CLI when invoked directly (bin or `tsx src/cli.ts`), not when
+// imported by a test. Comparing argv[1] to this module's path keeps `main`
+// from firing — and calling process.exit — on import.
+const invokedAsCli = process.argv[1] === fileURLToPath(import.meta.url);
+if (invokedAsCli) {
+  main(process.argv).catch((err) => {
+    console.error("Error:", err.message);
+    process.exit(1);
+  });
+}
