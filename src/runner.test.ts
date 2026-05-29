@@ -298,14 +298,14 @@ describe("executeScene", () => {
 
     it("passes when the value conforms to scene.schema", async () => {
       const scene = makeScene({ schema: Plan });
-      const executor = makeExecutor({ value: { plan_items: [{ step: "search" }] } });
+      const executor = vi.fn().mockResolvedValue({ value: { plan_items: [{ step: "search" }] } });
       const result = await executeScene(executor, scene);
       expect(result.passed).toBe(true);
     });
 
     it("fails with a formatted schema error on a mismatch", async () => {
       const scene = makeScene({ schema: Plan });
-      const executor = makeExecutor({ value: { plan_items: [{ step: 42 }] } });
+      const executor = vi.fn().mockResolvedValue({ value: { plan_items: [{ step: 42 }] } });
       const result = await executeScene(executor, scene);
       expect(result.passed).toBe(false);
       expect(result.error).toContain("Schema validation failed");
@@ -325,7 +325,7 @@ describe("executeScene", () => {
         schema: Plan,
         assertions: [{ field: "response", fn }],
       });
-      const executor = makeExecutor({ value: { plan_items: [{ step: 42 }] } });
+      const executor = vi.fn().mockResolvedValue({ value: { plan_items: [{ step: 42 }] } });
       const result = await executeScene(executor, scene);
       expect(result.passed).toBe(false);
       expect(fn).not.toHaveBeenCalled();

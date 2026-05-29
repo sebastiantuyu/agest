@@ -1,5 +1,6 @@
 import { describe, it, expectTypeOf } from "vitest";
 import { agent } from "./index";
+import { SceneBuilder } from "./context";
 import type { InferOutput, StandardSchemaV1 } from "./schema";
 import { executeScene, extractField } from "./runner";
 import type {
@@ -57,6 +58,18 @@ describe("generic T flows through the pipeline (type-level)", () => {
     // from the schema's inferred output (e.g. z.infer<typeof Schema>).
     type PlanSchema = StandardSchemaV1<Plan, Plan>;
     expectTypeOf<InferOutput<PlanSchema>>().toEqualTypeOf<Plan>();
+  });
+
+  it("forwards T into the scene's .expect() callback by field", () => {
+    // SceneBuilder<T> hands the known fields a typed value; constructing one is
+    // side-effect-free (no execution) so this stays a pure type check.
+    const b = new SceneBuilder<Plan>("p");
+    b.expect("value", (v) => expectTypeOf(v).toEqualTypeOf<Plan>());
+    b.expect("response", (v) => expectTypeOf(v).toEqualTypeOf<Plan>());
+    b.expect("text", (t) => expectTypeOf(t).toEqualTypeOf<string>());
+    b.expect("refusal", (r) => expectTypeOf(r).toEqualTypeOf<boolean | undefined>());
+    // Dot-paths can't be typed from a string literal — they fall back to any.
+    b.expect("plan_items.0.step", (v) => expectTypeOf(v).toBeAny());
   });
 
   it("keeps extractField return as unknown (dynamic field access)", () => {

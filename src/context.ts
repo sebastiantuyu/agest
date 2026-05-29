@@ -16,7 +16,17 @@ import { renderTerminalWaterfall } from "./waterfall";
 import type { StandardSchemaV1 } from "./schema";
 import { PromisePool } from "@supercharge/promise-pool";
 
-export class SceneBuilder {
+/**
+ * Builds a scene. Generic over `T`, the agent's native value type, so the
+ * known fields hand a typed value to the assertion callback:
+ *   - `"value"` / `"response"` → `T`
+ *   - `"text"`                 → `string`
+ *   - `"refusal"`              → `boolean | undefined`
+ *   - any dot-path / other     → `any` (a string field can't be typed)
+ * `T` flows in from a schema-typed `agent()` via the scene fn passed to its
+ * callback. The free `scene()` import stays `SceneBuilder<string>`.
+ */
+export class SceneBuilder<T = string> {
   private _assertions: Array<{ field: string; fn: (value: any) => void }> = [];
   private _timeout?: number;
   private _turns?: number;
@@ -26,17 +36,17 @@ export class SceneBuilder {
 
   constructor(private _prompt: string) {}
 
-  timeout(ms: number): SceneBuilder {
+  timeout(ms: number): this {
     this._timeout = ms;
     return this;
   }
 
-  turns(n: number): SceneBuilder {
+  turns(n: number): this {
     this._turns = n;
     return this;
   }
 
-  runs(n: number): SceneBuilder {
+  runs(n: number): this {
     this._runs = Math.max(1, Math.round(n));
     return this;
   }
@@ -46,7 +56,11 @@ export class SceneBuilder {
     this._suite = name;
   }
 
-  expect(field: string, fn: (value: any) => void): SceneBuilder {
+  expect(field: "value" | "response", fn: (value: T) => void): this;
+  expect(field: "text", fn: (value: string) => void): this;
+  expect(field: "refusal", fn: (value: boolean | undefined) => void): this;
+  expect(field: string, fn: (value: any) => void): this;
+  expect(field: string, fn: (value: any) => void): this {
     this._assertions.push({ field, fn });
     return this;
   }
@@ -55,7 +69,7 @@ export class SceneBuilder {
    * Validate this scene's native value against a Standard Schema before user
    * assertions run. Overrides any schema declared on the agent.
    */
-  expectSchema(schema: StandardSchemaV1): SceneBuilder {
+  expectSchema(schema: StandardSchemaV1): this {
     this._schema = schema;
     return this;
   }
@@ -74,7 +88,7 @@ export class SceneBuilder {
 }
 
 export class AgentContext<T = string> {
-  private _scenes: SceneBuilder[] = [];
+  private _scenes: SceneBuilder<T>[] = [];
   private _currentSuite?: string;
 
   private _beforeAllHooks: HookFn[] = [];
@@ -100,8 +114,8 @@ export class AgentContext<T = string> {
     this._currentSuite = undefined;
   }
 
-  registerScene(prompt: string): SceneBuilder {
-    const builder = new SceneBuilder(prompt);
+  registerScene(prompt: string): SceneBuilder<T> {
+    const builder = new SceneBuilder<T>(prompt);
     if (this._currentSuite) {
       builder._setSuite(this._currentSuite);
     }
