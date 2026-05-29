@@ -7,7 +7,15 @@ export interface ModelPrice {
   input: number;
   /** USD per 1M output tokens */
   output: number;
+  /**
+   * USD per 1M cached (prompt-cache-hit) input tokens. When omitted, cached
+   * tokens are billed at `DEFAULT_CACHE_MULTIPLIER` × the input rate.
+   */
+  cachedInput?: number;
 }
+
+/** Fraction of the input rate charged for cache-hit tokens when no explicit rate is set. */
+export const DEFAULT_CACHE_MULTIPLIER = 0.1;
 
 export type CostSource = "provider" | "table" | "unavailable";
 
@@ -50,6 +58,8 @@ export interface ComputeCostInput {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  /** Cache-hit input tokens (subset of inputTokens), billed at the cached rate. */
+  cachedInputTokens?: number;
   /** USD cost the provider already reported (takes precedence) */
   providerCost?: number;
 }
@@ -62,7 +72,13 @@ export function computeCost(input: ComputeCostInput): CostBreakdown {
   const price = lookupPrice(input.model);
   if (!price) return { source: "unavailable" };
 
-  const inputUsd = ((input.inputTokens ?? 0) / 1_000_000) * price.input;
+  const totalInput = input.inputTokens ?? 0;
+  const cached = Math.min(input.cachedInputTokens ?? 0, totalInput);
+  const uncached = totalInput - cached;
+  const cachedRate = price.cachedInput ?? price.input * DEFAULT_CACHE_MULTIPLIER;
+
+  const inputUsd =
+    (uncached / 1_000_000) * price.input + (cached / 1_000_000) * cachedRate;
   const outputUsd = ((input.outputTokens ?? 0) / 1_000_000) * price.output;
   return {
     inputUsd,

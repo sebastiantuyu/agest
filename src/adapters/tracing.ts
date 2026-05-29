@@ -94,6 +94,7 @@ export async function createTracingHandle(baselineMs: number): Promise<TracingHa
         model: name,
         inputTokens: tokens?.input,
         outputTokens: tokens?.output,
+        cachedInputTokens,
         providerCost,
       });
 

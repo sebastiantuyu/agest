@@ -49,6 +49,19 @@ describe("computeCost", () => {
     expect(c.totalUsd).toBeCloseTo(12.5);
   });
 
+  it("bills cached input tokens at the default 0.1x multiplier", () => {
+    const c = computeCost({ model: "gpt-4o", inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 800_000 });
+    // 200k uncached @2.5 + 800k cached @0.25 (=2.5*0.1)
+    expect(c.inputUsd).toBeCloseTo((200_000 / 1e6) * 2.5 + (800_000 / 1e6) * 0.25);
+    expect(c.source).toBe("table");
+  });
+
+  it("honors an explicit cachedInput rate from overrides", () => {
+    setPricingOverrides({ "gpt-5.4": { input: 3, output: 15, cachedInput: 0.3 } });
+    const c = computeCost({ model: "gpt-5.4", inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 1_000_000 });
+    expect(c.inputUsd).toBeCloseTo(0.3); // all cached @0.3/MTok
+  });
+
   it("returns 'unavailable' when the model is unknown", () => {
     const c = computeCost({ model: "totally-fake-model", inputTokens: 1000, outputTokens: 500 });
     expect(c).toEqual({ source: "unavailable" });
