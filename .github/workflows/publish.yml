@@ -52,6 +52,14 @@ jobs:
 
       - run: pnpm build
 
-      - run: npm publish --access public
+      - name: Publish to npm
+        # Prerelease tags (e.g. v0.3.3-next.0) publish under the `next` dist-tag
+        # so they don't displace `latest` for existing consumers.
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            npm publish --access public --tag next
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
