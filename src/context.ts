@@ -13,6 +13,7 @@ import { logger, c } from "./logger";
 import { loadConfig } from "./config";
 import { setPricingOverrides } from "./pricing";
 import { renderTerminalWaterfall } from "./waterfall";
+import type { StandardSchemaV1 } from "./schema";
 import { PromisePool } from "@supercharge/promise-pool";
 
 export class SceneBuilder {
@@ -21,6 +22,7 @@ export class SceneBuilder {
   private _turns?: number;
   private _runs?: number;
   private _suite?: string;
+  private _schema?: StandardSchemaV1;
 
   constructor(private _prompt: string) {}
 
@@ -49,6 +51,15 @@ export class SceneBuilder {
     return this;
   }
 
+  /**
+   * Validate this scene's native value against a Standard Schema before user
+   * assertions run. Overrides any schema declared on the agent.
+   */
+  expectSchema(schema: StandardSchemaV1): SceneBuilder {
+    this._schema = schema;
+    return this;
+  }
+
   toDefinition(): SceneDefinition {
     return {
       prompt: this._prompt,
@@ -57,6 +68,7 @@ export class SceneBuilder {
       turns: this._turns,
       runs: this._runs,
       suite: this._suite,
+      schema: this._schema,
     };
   }
 }
@@ -70,7 +82,11 @@ export class AgentContext<T = string> {
   private _beforeEachHooks: HookFn[] = [];
   private _afterEachHooks: HookFn[] = [];
 
-  constructor(private _executor: AgentExecutor<T>, private _name?: string) {}
+  constructor(
+    private _executor: AgentExecutor<T>,
+    private _name?: string,
+    private _schema?: StandardSchemaV1,
+  ) {}
 
   registerHook(type: "beforeAll" | "afterAll" | "beforeEach" | "afterEach", fn: HookFn): void {
     this[`_${type}Hooks`].push(fn);
@@ -97,7 +113,12 @@ export class AgentContext<T = string> {
     const config = await loadConfig();
     setPricingOverrides(config.pricing);
     const parallelism = Math.max(1, config.parallelism ?? 1);
-    const definitions = this._scenes.map((s) => s.toDefinition());
+    const definitions = this._scenes.map((s) => {
+      const def = s.toDefinition();
+      // Agent-level schema is the default; a scene-level schema wins.
+      if (!def.schema && this._schema) def.schema = this._schema;
+      return def;
+    });
     const orderedResults: SceneResult<T>[] = new Array(definitions.length);
     const total = definitions.length;
 

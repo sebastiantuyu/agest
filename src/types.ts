@@ -1,3 +1,5 @@
+import type { StandardSchemaV1 } from "./schema";
+
 export interface ExecutorOptions {
   signal?: AbortSignal;
 }
@@ -83,6 +85,8 @@ export interface SceneDefinition {
   turns?: number;
   runs?: number;
   suite?: string;
+  /** Standard Schema validated against the native value before user assertions. */
+  schema?: StandardSchemaV1;
 }
 
 export type JudgeVerdict = "pass" | "fail" | "partial";

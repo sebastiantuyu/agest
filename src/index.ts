@@ -1,7 +1,9 @@
 import type { AgentExecutor, AgentReport, HookFn } from "./types";
 import { AgentContext, SceneBuilder, setContext, getContext } from "./context";
+import { isStandardSchema, type StandardSchemaV1, type InferOutput } from "./schema";
 
 export { expect } from "./assertions";
+export type { StandardSchemaV1, InferOutput } from "./schema";
 export { logger } from "./logger";
 export { defineConfig } from "./config";
 export { createTrace, summarizeEvents } from "./adapters/tracing";
@@ -75,8 +77,33 @@ export function agent<T = string>(
   executor: AgentExecutor<T>,
   fn: () => void,
   options?: AgentOptions
-): Promise<AgentReport<T>> {
-  const ctx = new AgentContext<T>(executor, options?.name);
+): Promise<AgentReport<T>>;
+/**
+ * Schema-typed agent: the executor's `value` type is inferred from the schema
+ * (e.g. `z.infer<typeof Schema>`), and every non-refusal scene is validated
+ * against it. A scene's own `.expectSchema()` overrides the agent schema.
+ */
+export function agent<S extends StandardSchemaV1>(
+  schema: S,
+  executor: AgentExecutor<InferOutput<S>>,
+  fn: () => void,
+  options?: AgentOptions
+): Promise<AgentReport<InferOutput<S>>>;
+export function agent(
+  ...args:
+    | [StandardSchemaV1, AgentExecutor<any>, () => void, AgentOptions?]
+    | [AgentExecutor<any>, () => void, AgentOptions?]
+): Promise<AgentReport<any>> {
+  const [schema, executor, fn, options] = isStandardSchema(args[0])
+    ? (args as [StandardSchemaV1, AgentExecutor<any>, () => void, AgentOptions?])
+    : ([undefined, ...(args as [AgentExecutor<any>, () => void, AgentOptions?])] as [
+        undefined,
+        AgentExecutor<any>,
+        () => void,
+        AgentOptions?,
+      ]);
+
+  const ctx = new AgentContext<any>(executor, options?.name, schema);
   setContext(ctx);
 
   try {

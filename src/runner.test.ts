@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { z } from "zod";
 import type { AgentResponse, SceneDefinition } from "./types";
 import { extractField, executeScene } from "./runner";
 
@@ -287,6 +288,47 @@ describe("executeScene", () => {
       });
       await executeScene(makeExecutor(), scene);
       expect(fn2).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("schema validation", () => {
+    const Plan = z.object({
+      plan_items: z.array(z.object({ step: z.string() })),
+    });
+
+    it("passes when the value conforms to scene.schema", async () => {
+      const scene = makeScene({ schema: Plan });
+      const executor = makeExecutor({ value: { plan_items: [{ step: "search" }] } });
+      const result = await executeScene(executor, scene);
+      expect(result.passed).toBe(true);
+    });
+
+    it("fails with a formatted schema error on a mismatch", async () => {
+      const scene = makeScene({ schema: Plan });
+      const executor = makeExecutor({ value: { plan_items: [{ step: 42 }] } });
+      const result = await executeScene(executor, scene);
+      expect(result.passed).toBe(false);
+      expect(result.error).toContain("Schema validation failed");
+      expect(result.error).toContain("plan_items.0.step");
+    });
+
+    it("skips schema validation for a refusal", async () => {
+      const scene = makeScene({ schema: Plan });
+      const executor = makeExecutor({ text: "I cannot help with that", refusal: true });
+      const result = await executeScene(executor, scene);
+      expect(result.passed).toBe(true);
+    });
+
+    it("runs schema validation before user assertions", async () => {
+      const fn = vi.fn();
+      const scene = makeScene({
+        schema: Plan,
+        assertions: [{ field: "response", fn }],
+      });
+      const executor = makeExecutor({ value: { plan_items: [{ step: 42 }] } });
+      const result = await executeScene(executor, scene);
+      expect(result.passed).toBe(false);
+      expect(fn).not.toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect as vitestExpect, vi, beforeEach } from "vitest";
+import { z } from "zod";
 
 vi.mock("./refusal", () => ({
   isRefusal: vi.fn(),
@@ -338,6 +339,39 @@ describe("expect(value).toBe — structural matchers", () => {
       vitestExpect(() =>
         agestExpect(3).toBe.satisfying((v) => v > 10, "must exceed 10")
       ).toThrow("must exceed 10");
+    });
+  });
+
+  describe(".matchingSchema(schema)", () => {
+    const Plan = z.object({
+      plan_items: z.array(z.object({ step: z.string() })),
+    });
+
+    it("passes when the value conforms to the schema", () => {
+      vitestExpect(() =>
+        agestExpect({ plan_items: [{ step: "search" }] }).toBe.matchingSchema(Plan)
+      ).not.toThrow();
+    });
+
+    it("throws with the schema's formatted issues on a mismatch", () => {
+      vitestExpect(() =>
+        agestExpect({ plan_items: [{ step: 42 }] }).toBe.matchingSchema(Plan)
+      ).toThrow(/Schema validation failed.*plan_items\.0\.step/s);
+    });
+
+    it("validates a field value, not just the whole object", () => {
+      vitestExpect(() =>
+        agestExpect("book_flight").toBe.matchingSchema(z.string())
+      ).not.toThrow();
+      vitestExpect(() =>
+        agestExpect(42).toBe.matchingSchema(z.string())
+      ).toThrow(/Schema validation failed/);
+    });
+
+    it("throws a directive error for an async schema", () => {
+      vitestExpect(() =>
+        agestExpect("x").toBe.matchingSchema(z.string().refine(async () => true))
+      ).toThrow(/async schema/i);
     });
   });
 });

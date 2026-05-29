@@ -12,6 +12,7 @@ import type { JudgeConfig } from "./config";
 import { collectPendingJudgements } from "./assertions";
 import { callJudge, resolveJudgeExecutor } from "./judge";
 import { resolveValue, resolveText, serializeValue, navigatePath } from "./resolve";
+import { validateAgainstSchema } from "./schema";
 
 const DEFAULT_SCENE_TIMEOUT = 10_000;
 
@@ -109,7 +110,21 @@ async function executeSingleRun<T>(
   let error: string | undefined;
   let judgement: JudgeResult | undefined;
 
+  // Schema validation runs first — a structural failure is the headline. Skip
+  // refusals (which legitimately won't match the output shape) and empty values.
+  if (scene.schema && !response.refusal) {
+    const value = resolveValue(response);
+    if (value !== undefined) {
+      const outcome = await validateAgainstSchema(scene.schema, value);
+      if (!outcome.ok) {
+        passed = false;
+        error = `Schema validation failed — ${outcome.message}`;
+      }
+    }
+  }
+
   for (const assertion of scene.assertions) {
+    if (!passed) break;
     try {
       const value = extractField(response, assertion.field);
       assertion.fn(value);

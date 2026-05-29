@@ -45,7 +45,7 @@ describe("agent(executor, fn, options?)", () => {
   it("creates AgentContext with executor and name", async () => {
     const executor = vi.fn();
     await agent(executor, () => {}, { name: "test-agent" });
-    expect(AgentContext).toHaveBeenCalledWith(executor, "test-agent");
+    expect(AgentContext).toHaveBeenCalledWith(executor, "test-agent", undefined);
   });
 
   it("calls setContext with the new context then clears it", async () => {
@@ -76,6 +76,6 @@ describe("agent(executor, fn, options?)", () => {
 
   it("works without options parameter", async () => {
     await agent(vi.fn(), () => {});
-    expect(AgentContext).toHaveBeenCalledWith(expect.anything(), undefined);
+    expect(AgentContext).toHaveBeenCalledWith(expect.anything(), undefined, undefined);
   });
 });

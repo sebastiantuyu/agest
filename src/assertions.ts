@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isRefusal } from "./refusal";
 import { serializeValue } from "./resolve";
 import { isObjectLike, isPlainObject, structuralContains } from "./match";
+import { validateSync, type StandardSchemaV1 } from "./schema";
 import type { JudgeCriteria } from "./judge";
 
 export interface PendingJudgement {
@@ -55,6 +56,13 @@ export interface AgentMatchers {
   notEqualTo(expected: unknown): void;
   /** Assert the value (array/string) has length `n`. */
   ofLength(n: number): void;
+  /**
+   * Validate the native value against a Standard Schema (zod 4, valibot,
+   * arktype, …). Throws with the schema's formatted issues on failure.
+   * Synchronous — for async (`refine`-style) schemas, declare the schema at the
+   * agent() or scene().expectSchema() level instead.
+   */
+  matchingSchema(schema: StandardSchemaV1): void;
   /**
    * Escape hatch for anything not covered by a named matcher: a predicate over
    * the native value. Stays deterministic — use it to express negatives too,
@@ -218,6 +226,16 @@ function makeMatchers(value: unknown): AgentMatchers {
       assert(
         len === n,
         `Expected length ${n} but got ${Number.isNaN(len) ? "a non-measurable value" : len}`,
+      );
+    },
+
+    matchingSchema(schema: StandardSchemaV1) {
+      const outcome = validateSync(schema, value);
+      assert(
+        outcome.ok,
+        `Schema validation failed for value "${preview(value)}" — ${
+          outcome.ok ? "" : outcome.message
+        }`,
       );
     },
 
