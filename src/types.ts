@@ -4,6 +4,31 @@ export interface ExecutorOptions {
 
 export type AgentExecutor = (input: string, options?: ExecutorOptions) => Promise<AgentResponse>;
 
+export type CostSource = "provider" | "table" | "unavailable";
+
+export interface CostBreakdown {
+  inputUsd?: number;
+  outputUsd?: number;
+  totalUsd?: number;
+  source: CostSource;
+}
+
+export type TimelineEventKind = "model" | "tool";
+
+export interface TimelineEvent {
+  kind: TimelineEventKind;
+  name: string;
+  /** ms relative to the scene start */
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  tokens?: { input: number; output: number };
+  cost?: CostBreakdown;
+  /** Index of the run this event belongs to (only set when aggregating across multi-run scenes) */
+  runIndex?: number;
+  error?: string;
+}
+
 export interface AgentResponse {
   text: string;
   refusal?: boolean;
@@ -13,6 +38,8 @@ export interface AgentResponse {
     tokens?: { input: number; output: number };
     tools?: string[];
     systemPrompt?: string;
+    events?: TimelineEvent[];
+    cost?: CostBreakdown;
     [key: string]: unknown;
   };
 }
@@ -55,6 +82,13 @@ export interface SceneResult {
   runs?: RunResult[];
   passRate?: number;
   statisticalSignificance?: number;
+  /** Aggregate tokens across all runs of this scene */
+  tokens?: { input: number; output: number };
+  /** Aggregate USD cost across all runs of this scene */
+  costUsd?: number;
+  costSource?: CostSource;
+  /** Ordered timeline events from every run of the scene */
+  events?: TimelineEvent[];
 }
 
 export interface AgentReport {
@@ -72,5 +106,8 @@ export interface AgentReport {
   totalCases: number;
   averageInputTokensPerCase?: number;
   averageOutputTokensPerCase?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  totalCostUsd?: number;
   results: SceneResult[];
 }

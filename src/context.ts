@@ -10,6 +10,7 @@ import { executeScene } from "./runner";
 import { formatReport, writeReport, writeDiffEntry } from "./reporter";
 import { logger, c } from "./logger";
 import { loadConfig } from "./config";
+import { setPricingOverrides } from "./pricing";
 import { PromisePool } from "@supercharge/promise-pool";
 
 export class SceneBuilder {
@@ -92,6 +93,7 @@ export class AgentContext {
 
   async execute(): Promise<AgentReport> {
     const config = await loadConfig();
+    setPricingOverrides(config.pricing);
     const parallelism = Math.max(1, config.parallelism ?? 1);
     const definitions = this._scenes.map((s) => s.toDefinition());
     const orderedResults: SceneResult[] = new Array(definitions.length);
@@ -207,30 +209,28 @@ export class AgentContext {
           )
         : 0;
 
-    const tokensAvailable = results.some(
-      (r) => r.response.metadata?.tokens != null
-    );
+    const sceneTokens = results
+      .map((r) => r.tokens ?? r.response.metadata?.tokens)
+      .filter((t): t is { input: number; output: number } => t != null);
 
     let averageInputTokensPerCase: number | undefined;
     let averageOutputTokensPerCase: number | undefined;
+    let totalInputTokens: number | undefined;
+    let totalOutputTokens: number | undefined;
 
-    if (tokensAvailable) {
-      const withTokens = results.filter(
-        (r) => r.response.metadata?.tokens != null
-      );
-      averageInputTokensPerCase = Math.round(
-        withTokens.reduce(
-          (sum, r) => sum + (r.response.metadata!.tokens!.input ?? 0),
-          0
-        ) / withTokens.length
-      );
-      averageOutputTokensPerCase = Math.round(
-        withTokens.reduce(
-          (sum, r) => sum + (r.response.metadata!.tokens!.output ?? 0),
-          0
-        ) / withTokens.length
-      );
+    if (sceneTokens.length > 0) {
+      totalInputTokens = sceneTokens.reduce((s, t) => s + (t.input ?? 0), 0);
+      totalOutputTokens = sceneTokens.reduce((s, t) => s + (t.output ?? 0), 0);
+      averageInputTokensPerCase = Math.round(totalInputTokens / sceneTokens.length);
+      averageOutputTokensPerCase = Math.round(totalOutputTokens / sceneTokens.length);
     }
+
+    const sceneCosts = results
+      .map((r) => r.costUsd)
+      .filter((c): c is number => typeof c === "number");
+    const totalCostUsd = sceneCosts.length > 0
+      ? sceneCosts.reduce((s, c) => s + c, 0)
+      : undefined;
 
     const firstMeta = results.find((r) => r.response.metadata)?.response
       .metadata;
@@ -260,6 +260,9 @@ export class AgentContext {
       totalCases: results.length,
       averageInputTokensPerCase,
       averageOutputTokensPerCase,
+      totalInputTokens,
+      totalOutputTokens,
+      totalCostUsd,
       results,
     };
 

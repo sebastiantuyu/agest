@@ -1,7 +1,7 @@
 import { access, mkdir, writeFile } from "fs/promises";
 import { createHash } from "crypto";
 import { join } from "path";
-import type { AgentReport } from "./types";
+import type { AgentReport, SceneResult, TimelineEvent } from "./types";
 
 export function formatReport(report: AgentReport): string {
   const lines: string[] = ["agent:"];
@@ -106,7 +106,81 @@ export function formatReport(report: AgentReport): string {
     );
   }
 
+  if (report.totalInputTokens != null) {
+    lines.push(`    total_input_tokens: ${report.totalInputTokens}`);
+  }
+  if (report.totalOutputTokens != null) {
+    lines.push(`    total_output_tokens: ${report.totalOutputTokens}`);
+  }
+  if (report.totalCostUsd != null) {
+    lines.push(`    total_cost_usd: ${formatUsd(report.totalCostUsd)}`);
+  }
+
+  const observedScenes = report.results.filter(
+    (r) => r.tokens || r.costUsd != null || (r.events && r.events.length),
+  );
+  if (observedScenes.length > 0) {
+    lines.push(`    scenes:`);
+    for (const r of observedScenes) {
+      lines.push(...renderSceneObservability(r));
+    }
+  }
+
   return lines.join("\n");
+}
+
+function renderSceneObservability(r: SceneResult): string[] {
+  const out: string[] = [];
+  const promptLabel = r.prompt.length > 80 ? r.prompt.slice(0, 77) + "..." : r.prompt;
+  out.push(`        - prompt: "${escapeYaml(promptLabel)}"`);
+  out.push(`          duration_ms: ${Math.round(r.duration)}`);
+  if (r.tokens) {
+    out.push(`          tokens: { input: ${r.tokens.input}, output: ${r.tokens.output} }`);
+  }
+  if (r.costUsd != null) {
+    const source = r.costSource ?? "table";
+    out.push(`          cost_usd: ${formatUsd(r.costUsd)}`);
+    out.push(`          cost_source: ${source}`);
+  }
+  if (r.events && r.events.length) {
+    out.push(`          timeline:`);
+    for (const e of r.events) {
+      out.push(...renderTimelineEvent(e));
+    }
+  }
+  return out;
+}
+
+function renderTimelineEvent(e: TimelineEvent): string[] {
+  const out: string[] = [];
+  out.push(`              - kind: ${e.kind}`);
+  out.push(`                name: "${escapeYaml(e.name)}"`);
+  out.push(`                start_ms: ${Math.round(e.startMs)}`);
+  out.push(`                duration_ms: ${Math.round(e.durationMs)}`);
+  if (e.tokens) {
+    out.push(`                tokens: { input: ${e.tokens.input}, output: ${e.tokens.output} }`);
+  }
+  if (e.cost?.totalUsd != null) {
+    out.push(`                cost_usd: ${formatUsd(e.cost.totalUsd)}`);
+    out.push(`                cost_source: ${e.cost.source}`);
+  }
+  if (e.runIndex != null) {
+    out.push(`                run_index: ${e.runIndex}`);
+  }
+  if (e.error) {
+    out.push(`                error: "${escapeYaml(e.error)}"`);
+  }
+  return out;
+}
+
+function formatUsd(n: number): string {
+  if (n === 0) return "0";
+  // Up to 6 decimal places, but trim trailing zeros for compactness
+  return Number(n.toFixed(6)).toString();
+}
+
+function escapeYaml(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
 export async function writeReport(

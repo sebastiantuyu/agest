@@ -1,7 +1,9 @@
-import type { AgentExecutor, AgentResponse } from "../types";
+import type { AgentExecutor, AgentResponse, CostBreakdown, TimelineEvent } from "../types";
+import { computeCost } from "../pricing";
+import { createTracingHandle } from "./tracing";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Runnable = { invoke: (input: any) => Promise<any> };
+type Runnable = { invoke: (input: any, options?: any) => Promise<any> };
 
 type LangGraphGraph = Runnable & {
   lg_is_pregel: true;
@@ -47,12 +49,23 @@ function langGraphAdapter(graph: LangGraphGraph): AgentExecutor {
   const staticTools = extractGraphTools(graph);
 
   return async (input: string): Promise<AgentResponse> => {
+    const baseline = performance.now();
+    const tracing = await createTracingHandle(baseline);
+
     let result: Record<string, any>;
     try {
       const { HumanMessage } = await import("@langchain/core/messages");
-      result = await graph.invoke({ messages: [new HumanMessage(input)] });
+      result = await graph.invoke(
+        { messages: [new HumanMessage(input)] },
+        { callbacks: tracing.callbacks },
+      );
     } catch (err) {
-      return { text: "", executionError: (err as Error).message, metadata: { tools: staticTools } };
+      const { events } = tracing.drain();
+      return {
+        text: "",
+        executionError: (err as Error).message,
+        metadata: { tools: staticTools, events: events.length ? events : undefined },
+      };
     }
 
     const messages = result.messages as any[];
@@ -61,11 +74,26 @@ function langGraphAdapter(graph: LangGraphGraph): AgentExecutor {
       typeof last?.content === "string"
         ? last.content
         : JSON.stringify(last?.content ?? result);
-    const model = last?.response_metadata?.model_name as string | undefined;
+    const drained = tracing.drain();
+    const model =
+      (last?.response_metadata?.model_name as string | undefined) ??
+      drained.modelName;
+
+    const { tokens, cost } = summarizeRun({
+      events: drained.events,
+      fallbackTokens: extractTokensFromMessage(last),
+      model,
+    });
 
     return {
       text,
-      metadata: { model, tools: staticTools, tokens: extractTokensFromMessage(last) },
+      metadata: {
+        model,
+        tools: staticTools,
+        tokens,
+        cost,
+        events: drained.events.length ? drained.events : undefined,
+      },
     };
   };
 }
@@ -82,11 +110,27 @@ function reactAgentAdapter(agent: LangChainReactAgent): AgentExecutor {
     .filter(Boolean) as string[] | undefined;
 
   return async (input: string): Promise<AgentResponse> => {
+    const baseline = performance.now();
+    const tracing = await createTracingHandle(baseline);
+
     let result: Record<string, any>;
     try {
-      result = await agent.invoke({ messages: [{ role: "human", content: input }] });
+      result = await agent.invoke(
+        { messages: [{ role: "human", content: input }] },
+        { callbacks: tracing.callbacks },
+      );
     } catch (err) {
-      return { text: "", executionError: (err as Error).message, metadata: { model, systemPrompt, tools } };
+      const { events } = tracing.drain();
+      return {
+        text: "",
+        executionError: (err as Error).message,
+        metadata: {
+          model,
+          systemPrompt,
+          tools,
+          events: events.length ? events : undefined,
+        },
+      };
     }
 
     const messages = result.messages as any[];
@@ -96,9 +140,23 @@ function reactAgentAdapter(agent: LangChainReactAgent): AgentExecutor {
         ? last.content
         : JSON.stringify(last?.content ?? result);
 
+    const drained = tracing.drain();
+    const { tokens, cost } = summarizeRun({
+      events: drained.events,
+      fallbackTokens: extractTokensFromMessage(last),
+      model,
+    });
+
     return {
       text,
-      metadata: { model, systemPrompt, tools, tokens: extractTokensFromMessage(last) },
+      metadata: {
+        model,
+        systemPrompt,
+        tools,
+        tokens,
+        cost,
+        events: drained.events.length ? drained.events : undefined,
+      },
     };
   };
 }
@@ -107,11 +165,23 @@ function chainAdapter(chain: SimpleChain): AgentExecutor {
   const { model, systemPrompt } = extractChainMeta(chain);
 
   return async (input: string): Promise<AgentResponse> => {
+    const baseline = performance.now();
+    const tracing = await createTracingHandle(baseline);
+
     let result: Record<string, any>;
     try {
-      result = await chain.invoke({ input });
+      result = await chain.invoke({ input }, { callbacks: tracing.callbacks });
     } catch (err) {
-      return { text: "", executionError: (err as Error).message, metadata: { model, systemPrompt } };
+      const { events } = tracing.drain();
+      return {
+        text: "",
+        executionError: (err as Error).message,
+        metadata: {
+          model,
+          systemPrompt,
+          events: events.length ? events : undefined,
+        },
+      };
     }
 
     const text =
@@ -123,12 +193,24 @@ function chainAdapter(chain: SimpleChain): AgentExecutor {
             ? result.content
             : JSON.stringify(result);
 
+    const drained = tracing.drain();
+    const effectiveModel =
+      model ?? drained.modelName ?? (result.metadata?.model as string | undefined);
+
+    const { tokens, cost } = summarizeRun({
+      events: drained.events,
+      fallbackTokens: extractTokens(result),
+      model: effectiveModel,
+    });
+
     return {
       text,
       metadata: {
-        model: model ?? (result.metadata?.model as string | undefined),
+        model: effectiveModel,
         systemPrompt,
-        tokens: extractTokens(result),
+        tokens,
+        cost,
+        events: drained.events.length ? drained.events : undefined,
       },
     };
   };
@@ -208,4 +290,55 @@ function extractTokensFromMessage(
     input: usage.input_tokens ?? usage.prompt_tokens ?? 0,
     output: usage.output_tokens ?? usage.completion_tokens ?? 0,
   };
+}
+
+function summarizeRun(input: {
+  events: TimelineEvent[];
+  fallbackTokens?: { input: number; output: number };
+  model?: string;
+}): { tokens?: { input: number; output: number }; cost?: CostBreakdown } {
+  const modelEvents = input.events.filter((e) => e.kind === "model");
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let providerCost = 0;
+  let hasProviderCost = false;
+  let hasTableCost = false;
+  let tableCost = 0;
+  let hasTokens = false;
+
+  for (const e of modelEvents) {
+    if (e.tokens) {
+      hasTokens = true;
+      inputTokens += e.tokens.input;
+      outputTokens += e.tokens.output;
+    }
+    if (e.cost?.source === "provider" && e.cost.totalUsd != null) {
+      hasProviderCost = true;
+      providerCost += e.cost.totalUsd;
+    } else if (e.cost?.source === "table" && e.cost.totalUsd != null) {
+      hasTableCost = true;
+      tableCost += e.cost.totalUsd;
+    }
+  }
+
+  let tokens = hasTokens ? { input: inputTokens, output: outputTokens } : undefined;
+  if (!tokens && input.fallbackTokens) tokens = input.fallbackTokens;
+
+  // Pick cost: provider > table > recompute from fallback tokens
+  let cost: CostBreakdown | undefined;
+  if (hasProviderCost) {
+    cost = { totalUsd: providerCost, source: "provider" };
+  } else if (hasTableCost) {
+    cost = { totalUsd: tableCost, source: "table" };
+  } else if (tokens && input.model) {
+    const computed = computeCost({
+      model: input.model,
+      inputTokens: tokens.input,
+      outputTokens: tokens.output,
+    });
+    if (computed.source !== "unavailable") cost = computed;
+  }
+
+  return { tokens, cost };
 }

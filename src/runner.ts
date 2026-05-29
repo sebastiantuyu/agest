@@ -1,4 +1,13 @@
-import type { AgentExecutor, AgentResponse, JudgeResult, RunResult, SceneDefinition, SceneResult } from "./types";
+import type {
+  AgentExecutor,
+  AgentResponse,
+  CostSource,
+  JudgeResult,
+  RunResult,
+  SceneDefinition,
+  SceneResult,
+  TimelineEvent,
+} from "./types";
 import type { JudgeConfig } from "./config";
 import { collectPendingJudgements } from "./assertions";
 import { callJudge, resolveJudgeExecutor } from "./judge";
@@ -136,6 +145,9 @@ export async function executeScene(
   // Single run — original fast path
   if (numRuns <= 1) {
     const run = await executeSingleRun(executor, scene, timeoutMs, turns, judgeConfig);
+    const tokens = run.response.metadata?.tokens;
+    const cost = run.response.metadata?.cost;
+    const events = run.response.metadata?.events;
     return {
       prompt: scene.prompt,
       response: run.response,
@@ -144,6 +156,10 @@ export async function executeScene(
       error: run.error,
       judgement: run.judgement,
       suite: scene.suite,
+      tokens: tokens ? { input: tokens.input, output: tokens.output } : undefined,
+      costUsd: cost?.totalUsd,
+      costSource: cost?.source,
+      events: events && events.length ? events : undefined,
     };
   }
 
@@ -167,6 +183,38 @@ export async function executeScene(
     ? undefined
     : failedRuns[0]?.error ?? "Majority of runs failed";
 
+  // Aggregate tokens, cost, events across runs
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let hasTokens = false;
+  let costTotal = 0;
+  let hasCost = false;
+  let costSource: CostSource | undefined;
+  const allEvents: TimelineEvent[] = [];
+
+  runs.forEach((r, runIndex) => {
+    const meta = r.response.metadata;
+    if (meta?.tokens) {
+      hasTokens = true;
+      inputTokens += meta.tokens.input;
+      outputTokens += meta.tokens.output;
+    }
+    if (meta?.cost?.totalUsd != null) {
+      hasCost = true;
+      costTotal += meta.cost.totalUsd;
+      // Promote weakest source: provider > table > unavailable
+      if (costSource !== "table") costSource = meta.cost.source;
+      if (meta.cost.source === "table" && costSource !== "table") {
+        costSource = "table";
+      }
+    }
+    if (meta?.events?.length) {
+      for (const e of meta.events) {
+        allEvents.push({ ...e, runIndex });
+      }
+    }
+  });
+
   return {
     prompt: scene.prompt,
     response: lastRun.response,
@@ -178,5 +226,9 @@ export async function executeScene(
     runs,
     passRate,
     statisticalSignificance,
+    tokens: hasTokens ? { input: inputTokens, output: outputTokens } : undefined,
+    costUsd: hasCost ? costTotal : undefined,
+    costSource,
+    events: allEvents.length ? allEvents : undefined,
   };
 }
