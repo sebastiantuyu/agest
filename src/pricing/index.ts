@@ -20,7 +20,7 @@ export interface CostBreakdown {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const builtIn: Record<string, ModelPrice> = JSON.parse(
-  readFileSync(join(here, "pricing", "models.json"), "utf-8")
+  readFileSync(join(here, "models.json"), "utf-8")
 );
 
 let overrides: Record<string, ModelPrice> = {};
