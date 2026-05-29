@@ -8,6 +8,8 @@ vi.mock("@langchain/core/messages", () => ({
 }));
 
 import { langchain } from "./langchain";
+import { createTrace, summarizeEvents } from "./tracing";
+import type { TimelineEvent } from "../types";
 
 /**
  * Build a fake LangGraph runnable whose `invoke` calls each callback in
@@ -141,5 +143,71 @@ describe("langchain adapter tracing", () => {
     const events = result.metadata?.events ?? [];
     expect(events).toHaveLength(1);
     expect(events[0].error).toBe("rate limited");
+  });
+});
+
+describe("summarizeEvents", () => {
+  const modelEvent = (over: Partial<TimelineEvent>): TimelineEvent => ({
+    kind: "model",
+    name: "gpt-4o",
+    startMs: 0,
+    endMs: 1,
+    durationMs: 1,
+    ...over,
+  });
+
+  it("sums tokens across model events and computes table cost", () => {
+    const { tokens, cost } = summarizeEvents(
+      [
+        modelEvent({ tokens: { input: 100, output: 50 } }),
+        modelEvent({ tokens: { input: 200, output: 25 } }),
+      ],
+      "gpt-4o",
+    );
+    expect(tokens).toEqual({ input: 300, output: 75 });
+    expect(cost?.source).toBe("table");
+    expect(cost?.totalUsd).toBeCloseTo((300 / 1e6) * 2.5 + (75 / 1e6) * 10);
+  });
+
+  it("prefers provider cost over the table", () => {
+    const { cost } = summarizeEvents(
+      [modelEvent({ tokens: { input: 100, output: 50 }, cost: { totalUsd: 0.01, source: "provider" } })],
+      "gpt-4o",
+    );
+    expect(cost).toEqual({ totalUsd: 0.01, source: "provider" });
+  });
+
+  it("ignores tool events and falls back to fallbackTokens when no usage", () => {
+    const { tokens } = summarizeEvents(
+      [{ kind: "tool", name: "search", startMs: 0, endMs: 5, durationMs: 5 }],
+      "gpt-4o",
+      { input: 9, output: 3 },
+    );
+    expect(tokens).toEqual({ input: 9, output: 3 });
+  });
+});
+
+describe("createTrace", () => {
+  it("collects events, tokens, and cost from a traced run; memoizes collect()", async () => {
+    const trace = await createTrace({ model: "gpt-4o" });
+    const h = trace.callbacks[0];
+    expect(typeof h?.handleChatModelStart).toBe("function");
+
+    h.handleChatModelStart(
+      { id: ["chat", "ChatOpenAI"] }, [], "r1", undefined,
+      { invocation_params: { model: "gpt-4o" } },
+    );
+    h.handleLLMEnd(
+      { generations: [[{ message: { usage_metadata: { input_tokens: 120, output_tokens: 30 } } }]] },
+      "r1",
+    );
+
+    const out = trace.collect();
+    expect(out.events).toHaveLength(1);
+    expect(out.tokens).toEqual({ input: 120, output: 30 });
+    expect(out.cost?.source).toBe("table");
+
+    // memoized — second call returns the same object even though drain() cleared
+    expect(trace.collect()).toBe(out);
   });
 });

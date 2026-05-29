@@ -1,6 +1,5 @@
 import type { AgentExecutor, AgentResponse, CostBreakdown, TimelineEvent } from "../types";
-import { computeCost } from "../pricing";
-import { createTracingHandle } from "./tracing";
+import { createTracingHandle, summarizeEvents } from "./tracing";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Runnable = { invoke: (input: any, options?: any) => Promise<any> };
@@ -297,48 +296,5 @@ function summarizeRun(input: {
   fallbackTokens?: { input: number; output: number };
   model?: string;
 }): { tokens?: { input: number; output: number }; cost?: CostBreakdown } {
-  const modelEvents = input.events.filter((e) => e.kind === "model");
-
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let providerCost = 0;
-  let hasProviderCost = false;
-  let hasTableCost = false;
-  let tableCost = 0;
-  let hasTokens = false;
-
-  for (const e of modelEvents) {
-    if (e.tokens) {
-      hasTokens = true;
-      inputTokens += e.tokens.input;
-      outputTokens += e.tokens.output;
-    }
-    if (e.cost?.source === "provider" && e.cost.totalUsd != null) {
-      hasProviderCost = true;
-      providerCost += e.cost.totalUsd;
-    } else if (e.cost?.source === "table" && e.cost.totalUsd != null) {
-      hasTableCost = true;
-      tableCost += e.cost.totalUsd;
-    }
-  }
-
-  let tokens = hasTokens ? { input: inputTokens, output: outputTokens } : undefined;
-  if (!tokens && input.fallbackTokens) tokens = input.fallbackTokens;
-
-  // Pick cost: provider > table > recompute from fallback tokens
-  let cost: CostBreakdown | undefined;
-  if (hasProviderCost) {
-    cost = { totalUsd: providerCost, source: "provider" };
-  } else if (hasTableCost) {
-    cost = { totalUsd: tableCost, source: "table" };
-  } else if (tokens && input.model) {
-    const computed = computeCost({
-      model: input.model,
-      inputTokens: tokens.input,
-      outputTokens: tokens.output,
-    });
-    if (computed.source !== "unavailable") cost = computed;
-  }
-
-  return { tokens, cost };
+  return summarizeEvents(input.events, input.model, input.fallbackTokens);
 }

@@ -4,6 +4,8 @@ import { AgentContext, SceneBuilder, setContext, getContext } from "./context";
 export { expect } from "./assertions";
 export { logger } from "./logger";
 export { defineConfig } from "./config";
+export { createTrace, summarizeEvents } from "./adapters/tracing";
+export type { Trace } from "./adapters/tracing";
 export type { AgestConfig, JudgeConfig, JudgeExecutor } from "./config";
 export type { LogLevel } from "./logger";
 export type { AgentExpectation, AgentMatchers } from "./assertions";
@@ -18,6 +20,10 @@ export type {
   JudgeVerdict,
   JudgeResult,
   HookFn,
+  TimelineEvent,
+  TimelineEventKind,
+  CostBreakdown,
+  CostSource,
 } from "./types";
 
 export interface AgentOptions {

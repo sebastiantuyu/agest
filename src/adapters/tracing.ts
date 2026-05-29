@@ -174,6 +174,114 @@ export async function createTracingHandle(baselineMs: number): Promise<TracingHa
   };
 }
 
+export interface Trace {
+  /**
+   * Attach to your top-level LangChain/LangGraph call:
+   * `await graph.invoke(input, { callbacks: trace.callbacks })`.
+   * Callbacks propagate to nested nodes automatically.
+   */
+  callbacks: any[];
+  /**
+   * Collect the captured timeline plus aggregated tokens and cost. Call once
+   * after the run completes; the result is memoized so repeat calls are safe.
+   * Spread the result into your `AgentResponse.metadata` to surface the
+   * per-scene cost/timeline waterfall in the report.
+   */
+  collect(): {
+    events: TimelineEvent[];
+    tokens?: { input: number; output: number };
+    cost?: CostBreakdown;
+  };
+}
+
+/**
+ * Public tracing helper for custom executors (i.e. agents not wired through
+ * the `langchain()` adapter). Create one per scene run, hand its `callbacks`
+ * to your LangChain/LangGraph invocation, then spread `collect()` into the
+ * response metadata.
+ *
+ * @example
+ * ```ts
+ * const trace = await createTrace({ model: env.OPENROUTER_MODEL });
+ * const plan = await generatePlan(input, { callbacks: trace.callbacks });
+ * return { text: render(plan), metadata: { model, tools, ...trace.collect() } };
+ * ```
+ */
+export async function createTrace(opts?: { model?: string }): Promise<Trace> {
+  const baseline = performance.now();
+  const handle = await createTracingHandle(baseline);
+  let collected: ReturnType<Trace["collect"]> | undefined;
+  return {
+    callbacks: handle.callbacks,
+    collect() {
+      if (collected) return collected;
+      const drained = handle.drain();
+      const { tokens, cost } = summarizeEvents(
+        drained.events,
+        opts?.model ?? drained.modelName
+      );
+      collected = { events: drained.events, tokens, cost };
+      return collected;
+    },
+  };
+}
+
+/**
+ * Aggregate token counts and cost across a timeline's model events.
+ * Provider-reported cost wins; otherwise the table-derived cost; otherwise
+ * cost is recomputed from `model` and the summed tokens. `fallbackTokens` is
+ * used only when no model event carried usage.
+ */
+export function summarizeEvents(
+  events: TimelineEvent[],
+  model?: string,
+  fallbackTokens?: { input: number; output: number }
+): { tokens?: { input: number; output: number }; cost?: CostBreakdown } {
+  const modelEvents = events.filter((e) => e.kind === "model");
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let providerCost = 0;
+  let hasProviderCost = false;
+  let hasTableCost = false;
+  let tableCost = 0;
+  let hasTokens = false;
+
+  for (const e of modelEvents) {
+    if (e.tokens) {
+      hasTokens = true;
+      inputTokens += e.tokens.input;
+      outputTokens += e.tokens.output;
+    }
+    if (e.cost?.source === "provider" && e.cost.totalUsd != null) {
+      hasProviderCost = true;
+      providerCost += e.cost.totalUsd;
+    } else if (e.cost?.source === "table" && e.cost.totalUsd != null) {
+      hasTableCost = true;
+      tableCost += e.cost.totalUsd;
+    }
+  }
+
+  let tokens = hasTokens ? { input: inputTokens, output: outputTokens } : undefined;
+  if (!tokens && fallbackTokens) tokens = fallbackTokens;
+
+  let cost: CostBreakdown | undefined;
+  if (hasProviderCost) {
+    cost = { totalUsd: providerCost, source: "provider" };
+  } else if (hasTableCost) {
+    cost = { totalUsd: tableCost, source: "table" };
+  } else if (tokens && model) {
+    const computed = computeCost({
+      model,
+      inputTokens: tokens.input,
+      outputTokens: tokens.output,
+    });
+    if (computed.source !== "unavailable") cost = computed;
+  }
+
+  return { tokens, cost };
+}
+
 function now(): number {
   return performance.now();
 }
