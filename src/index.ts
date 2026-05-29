@@ -60,7 +60,7 @@ export function suite(name: string, fn: () => void): void {
   }
 }
 
-const pendingAgents: Promise<AgentReport>[] = [];
+const pendingAgents: Promise<AgentReport<any>>[] = [];
 let autoRunScheduled = false;
 let executionChain: Promise<void> = Promise.resolve();
 
@@ -71,12 +71,12 @@ export function _resetAutoRun(): void {
   executionChain = Promise.resolve();
 }
 
-export function agent(
-  executor: AgentExecutor,
+export function agent<T = string>(
+  executor: AgentExecutor<T>,
   fn: () => void,
   options?: AgentOptions
-): Promise<AgentReport> {
-  const ctx = new AgentContext(executor, options?.name);
+): Promise<AgentReport<T>> {
+  const ctx = new AgentContext<T>(executor, options?.name);
   setContext(ctx);
 
   try {

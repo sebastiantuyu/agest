@@ -7,6 +7,7 @@ import type {
   SceneResult,
 } from "./types";
 import { executeScene } from "./runner";
+import { resolveText } from "./resolve";
 import { formatReport, writeReport, writeDiffEntry } from "./reporter";
 import { logger, c } from "./logger";
 import { loadConfig } from "./config";
@@ -60,7 +61,7 @@ export class SceneBuilder {
   }
 }
 
-export class AgentContext {
+export class AgentContext<T = string> {
   private _scenes: SceneBuilder[] = [];
   private _currentSuite?: string;
 
@@ -69,7 +70,7 @@ export class AgentContext {
   private _beforeEachHooks: HookFn[] = [];
   private _afterEachHooks: HookFn[] = [];
 
-  constructor(private _executor: AgentExecutor, private _name?: string) {}
+  constructor(private _executor: AgentExecutor<T>, private _name?: string) {}
 
   registerHook(type: "beforeAll" | "afterAll" | "beforeEach" | "afterEach", fn: HookFn): void {
     this[`_${type}Hooks`].push(fn);
@@ -92,12 +93,12 @@ export class AgentContext {
     return builder;
   }
 
-  async execute(): Promise<AgentReport> {
+  async execute(): Promise<AgentReport<T>> {
     const config = await loadConfig();
     setPricingOverrides(config.pricing);
     const parallelism = Math.max(1, config.parallelism ?? 1);
     const definitions = this._scenes.map((s) => s.toDefinition());
-    const orderedResults: SceneResult[] = new Array(definitions.length);
+    const orderedResults: SceneResult<T>[] = new Array(definitions.length);
     const total = definitions.length;
 
     // Group scenes by suite for organized output
@@ -167,7 +168,7 @@ export class AgentContext {
         }
       }
 
-      logger.debug(`${indent}       response: ${result.response.text?.slice(0, 120)}`);
+      logger.debug(`${indent}       response: ${resolveText(result.response).slice(0, 120)}`);
     };
 
     if (hasSuites) {
@@ -255,7 +256,7 @@ export class AgentContext {
     if (firstMeta?.tools?.length) dimensions.tools = [...firstMeta.tools].sort().join(",");
     else dimensions.tools = "none";
 
-    const report: AgentReport = {
+    const report: AgentReport<T> = {
       name: this._name,
       model: firstMeta?.model,
       systemPromptHash: firstMeta?.systemPrompt
@@ -304,13 +305,16 @@ export function hashPromptOnly(prompt: string): string {
 }
 
 
-let currentContext: AgentContext | null = null;
+// The active context is a runtime singleton holding an executor of arbitrary
+// value type, so `any` is the honest type for the holder. The generic flows
+// through `agent()` → `AgentContext<T>` → the report at the call site.
+let currentContext: AgentContext<any> | null = null;
 
-export function setContext(ctx: AgentContext | null): void {
+export function setContext(ctx: AgentContext<any> | null): void {
   currentContext = ctx;
 }
 
-export function getContext(): AgentContext {
+export function getContext(): AgentContext<any> {
   if (!currentContext) {
     throw new Error("scene() must be called inside an agent() callback");
   }

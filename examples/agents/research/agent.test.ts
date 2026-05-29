@@ -17,7 +17,7 @@ agent(langchain(researchAgent), () => {
   scene("In what year was the Eiffel Tower completed?").expect(
     "response",
     (response) => {
-      expect(response).toBe.containing("1889");
+      expect(response).toBe.containingText("1889");
     }
   );
 
@@ -31,7 +31,7 @@ agent(langchain(researchAgent), () => {
   scene("Who created Python and when was it first released?").expect(
     "response",
     (response) => {
-      expect(response).toBe.containing("Guido");
+      expect(response).toBe.containingText("Guido");
     }
   );
 
@@ -45,7 +45,7 @@ agent(langchain(researchAgent), () => {
   scene("What is the exact speed of light in metres per second?").expect(
     "response",
     (response) => {
-      expect(response).toBe.containing("299,792,458");
+      expect(response).toBe.containingText("299,792,458");
     }
   );
 
@@ -59,14 +59,14 @@ agent(langchain(researchAgent), () => {
   scene("Who proposed the Turing Test and in what decade?").expect(
     "response",
     (response) => {
-      expect(response).toBe.containing("Alan Turing");
+      expect(response).toBe.containingText("Alan Turing");
     }
   );
 
   scene("Who proposed the Turing Test and in what decade?").expect(
     "response",
     (response) => {
-      expect(response).toBe.containing("1950");
+      expect(response).toBe.containingText("1950");
     }
   );
 

@@ -2,8 +2,9 @@ import { access, mkdir, writeFile } from "fs/promises";
 import { createHash } from "crypto";
 import { join } from "path";
 import type { AgentReport, SceneResult, TimelineEvent } from "./types";
+import { resolveText } from "./resolve";
 
-export function formatReport(report: AgentReport): string {
+export function formatReport(report: AgentReport<unknown>): string {
   const lines: string[] = ["agent:"];
 
   if (report.name) lines.push(`    name: "${report.name}"`);
@@ -38,8 +39,9 @@ export function formatReport(report: AgentReport): string {
         lines.push(`          reason: "${reason}"`);
       }
       const result = report.results.find((r) => r.prompt === c);
-      if (result?.response.text) {
-        const escaped = result.response.text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+      const responseText = result ? resolveText(result.response) : "";
+      if (responseText) {
+        const escaped = responseText.replace(/"/g, '\\"').replace(/\n/g, '\\n');
         lines.push(`          response: "${escaped}"`);
       }
     }
@@ -66,8 +68,9 @@ export function formatReport(report: AgentReport): string {
           if (r.error) {
             lines.push(`                reason: "${r.error}"`);
           }
-          if (r.response.text) {
-            const escaped = r.response.text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+          const responseText = resolveText(r.response);
+          if (responseText) {
+            const escaped = responseText.replace(/"/g, '\\"').replace(/\n/g, '\\n');
             lines.push(`                response: "${escaped}"`);
           }
         }
@@ -129,7 +132,7 @@ export function formatReport(report: AgentReport): string {
   return lines.join("\n");
 }
 
-function renderSceneObservability(r: SceneResult): string[] {
+function renderSceneObservability(r: SceneResult<unknown>): string[] {
   const out: string[] = [];
   const promptLabel = r.prompt.length > 80 ? r.prompt.slice(0, 77) + "..." : r.prompt;
   out.push(`        - prompt: "${escapeYaml(promptLabel)}"`);

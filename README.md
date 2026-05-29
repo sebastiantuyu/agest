@@ -53,6 +53,84 @@ agent:
     average_output_tokens_per_case: 34
 ```
 
+## Assertions
+
+Each scene asserts on a **field** of the agent's response via `.expect(field, fn)`,
+and inside the callback you chain a matcher off `expect(value).toBe`.
+
+### Structured responses
+
+An executor returns a native `value` (the source of truth for structural
+matchers) and/or a `text` projection (for the LLM judge and text matchers):
+
+```typescript
+// chat agent — a string is both value and text
+return { text: "Bonjour" };
+
+// structured agent — a native object, optionally with an enriched text view
+return { value: { plan_items: [{ step: "search" }] } };
+```
+
+### Selecting a field
+
+```typescript
+scene("Plan a trip to Tokyo")
+  .expect("value", (v) => expect(v).toBe.containingSubset({ plan_items: [{ step: "book_flight" }] }))
+  .expect("plan_items.0.step", (s) => expect(s).toBe.equalTo("book_flight")) // dot-path into the value
+  .expect("text", (t) => expect(t).toBe.containingText("Tokyo"));            // serialized/judge view
+```
+
+- `"response"` / `"value"` — the native value (objects stay objects; never stringified)
+- `"text"` — the serialized/enriched text view (lazy: a string passes through, else JSON)
+- `"refusal"` / `"metadata"` — the corresponding response properties
+- any **dot-path** (e.g. `"plan_items.0.options"`) — navigates into the value, falling back to metadata
+
+### Matchers
+
+**Refusal**
+
+| Matcher | Asserts |
+| --- | --- |
+| `refusal()` | the agent refused |
+| `notRefusal()` | the agent did **not** refuse |
+
+**Text** — substring / regex over a string value (or the serialized form of a non-string). Case-insensitive by default.
+
+| Matcher | Asserts |
+| --- | --- |
+| `containingText(text, { caseSensitive? })` | `text` appears as a substring |
+| `notContainingText(text, { caseSensitive? })` | `text` does **not** appear — handy for leak/PII guards |
+| `matchingPattern(regex)` | the text matches `regex` |
+
+**Structural** — operate on the native value; exact (case-sensitive) at the leaves.
+
+| Matcher | Asserts |
+| --- | --- |
+| `equalTo(expected)` | deep structural equality (NaN / Date / ±0 correct) |
+| `notEqualTo(expected)` | deep structural **inequality** |
+| `containingItem(item)` | value is an array containing `item` as an **exact** element |
+| `containingSubset(subset)` | `subset` is a recursive **partial** match — object key/value subset, or array sub-multiset membership |
+| `ofLength(n)` | array/string has length `n` |
+
+**Custom & judged**
+
+| Matcher | Asserts |
+| --- | --- |
+| `satisfying(predicate, message?)` | a deterministic predicate over the value holds (use for any negative not covered above) |
+| `judgedBy({ criteria, failWhen })` | an LLM judge resolves the criteria (fuzzy + paid) |
+
+```typescript
+expect(items).toBe.ofLength(3);
+expect(results).toBe.containingItem({ id: 7, status: "ok" });   // exact element
+expect(plan).toBe.containingSubset({ user: { id: 1 } });        // partial, nested
+expect(response).toBe.notContainingText("api_key");             // leak guard
+expect(score).toBe.satisfying((s) => s >= 0.8, "score too low");
+```
+
+> Use `containingItem` for exact array membership and `containingSubset` for
+> partial matching — strictness is chosen by the matcher name. For free-text
+> search over a structured value, assert on the `"text"` field.
+
 Generate a very interesting report with multiple runs!:
 
 ```

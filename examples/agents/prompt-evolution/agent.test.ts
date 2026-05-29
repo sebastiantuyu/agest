@@ -58,13 +58,13 @@ function defineScenes() {
     .expect("response", (r) => {
       expect(r).toBe.notRefusal();
       // "pancetta" is the catalog-specific ingredient — not just "bacon"
-      expect(r).toBe.containing("pancetta");
+      expect(r).toBe.containingText("pancetta");
     });
 
   scene("How long does the Mushroom Risotto take to cook?")
     .expect("response", (r) => {
       expect(r).toBe.notRefusal();
-      expect(r).toBe.containing("45");
+      expect(r).toBe.containingText("45");
     });
 
   scene("Is the Mushroom Risotto gluten-free?")
@@ -76,7 +76,7 @@ function defineScenes() {
   scene("How many calories does the Classic Caesar Salad have?")
     .expect("response", (r) => {
       expect(r).toBe.notRefusal();
-      expect(r).toBe.containing("350");
+      expect(r).toBe.containingText("350");
     });
 
   scene("Do you have any vegetarian recipes?")

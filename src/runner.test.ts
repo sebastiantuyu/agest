@@ -49,6 +49,54 @@ describe("extractField", () => {
   it("returns undefined when metadata is undefined and field is arbitrary", () => {
     expect(extractField({ text: "" }, "model")).toBeUndefined();
   });
+
+  describe("structured value semantics", () => {
+    const structured: AgentResponse<{ plan_items: { options: string[] }[] }> = {
+      value: { plan_items: [{ options: ["a", "b"] }] },
+      text: "rendered plan",
+      metadata: { model: "gpt-4" },
+    };
+
+    it("returns the native value for field 'value'", () => {
+      expect(extractField(structured, "value")).toEqual({
+        plan_items: [{ options: ["a", "b"] }],
+      });
+    });
+
+    it("returns the native value for field 'response' (alias)", () => {
+      expect(extractField(structured, "response")).toEqual(structured.value);
+    });
+
+    it("returns the serialized/enriched text view for field 'text'", () => {
+      expect(extractField(structured, "text")).toBe("rendered plan");
+    });
+
+    it("serializes value for 'text' when no explicit text is given", () => {
+      const res: AgentResponse<{ a: number }> = { value: { a: 1 } };
+      expect(extractField(res, "text")).toBe('{\n  "a": 1\n}');
+    });
+
+    it("navigates a dot-path into the structured value", () => {
+      expect(extractField(structured, "plan_items.0.options")).toEqual(["a", "b"]);
+      expect(extractField(structured, "plan_items.0.options.1")).toBe("b");
+    });
+
+    it("falls back to metadata when the dot-path is absent from value", () => {
+      expect(extractField(structured, "model")).toBe("gpt-4");
+    });
+
+    it("returns undefined when the path is in neither value nor metadata", () => {
+      expect(extractField(structured, "nonexistent")).toBeUndefined();
+    });
+
+    it("prefers a value path over a same-named metadata key", () => {
+      const res: AgentResponse<{ model: string }> = {
+        value: { model: "from-value" },
+        metadata: { model: "from-metadata" },
+      };
+      expect(extractField(res, "model")).toBe("from-value");
+    });
+  });
 });
 
 describe("executeScene", () => {
@@ -242,6 +290,51 @@ describe("executeScene", () => {
     });
   });
 
+  describe("structured value flow (generic T)", () => {
+    interface Plan {
+      plan_items: { step: string }[];
+    }
+
+    it("preserves the native value object on the response (never coerced)", async () => {
+      const value: Plan = { plan_items: [{ step: "search" }, { step: "summarize" }] };
+      const executor = vi.fn().mockResolvedValue({ value });
+      const result = await executeScene<Plan>(executor, makeScene());
+      expect(result.passed).toBe(true);
+      expect(result.response.value).toBe(value); // same reference, not stringified
+    });
+
+    it("feeds extracted structured fields into assertions end-to-end", async () => {
+      const value: Plan = { plan_items: [{ step: "search" }, { step: "summarize" }] };
+      const seen: unknown[] = [];
+      const scene = makeScene({
+        assertions: [
+          { field: "plan_items", fn: (v) => seen.push(v) },
+          { field: "plan_items.0.step", fn: (v) => seen.push(v) },
+          { field: "value", fn: (v) => seen.push(v) },
+        ],
+      });
+      const result = await executeScene<Plan>(vi.fn().mockResolvedValue({ value }), scene);
+      expect(result.passed).toBe(true);
+      expect(seen[0]).toEqual([{ step: "search" }, { step: "summarize" }]);
+      expect(seen[1]).toBe("search");
+      expect(seen[2]).toBe(value);
+    });
+
+    it("fails the scene when a structural assertion on the value throws", async () => {
+      const value: Plan = { plan_items: [{ step: "search" }] };
+      const scene = makeScene({
+        assertions: [
+          { field: "plan_items", fn: (v: unknown[]) => {
+            if (v.length !== 2) throw new Error("expected 2 items");
+          } },
+        ],
+      });
+      const result = await executeScene<Plan>(vi.fn().mockResolvedValue({ value }), scene);
+      expect(result.passed).toBe(false);
+      expect(result.error).toBe("expected 2 items");
+    });
+  });
+
   describe("judge integration", () => {
     it("skips judge when pending is empty", async () => {
       mockedCollect.mockReturnValue([]);
@@ -267,6 +360,19 @@ describe("executeScene", () => {
       const result = await executeScene(makeExecutor(), makeScene());
       expect(result.passed).toBe(false);
       expect(result.error).toContain("requires a judge configured");
+    });
+
+    it("hands the judge the serialized text view of a structured value (not [object Object])", async () => {
+      mockedCallJudge.mockResolvedValue({ verdict: "pass", reasoning: "ok", criteria: "c" });
+      mockedCollect.mockReturnValue([
+        { value: { city: "Paris" }, criteria: { criteria: "c", failWhen: "f" } },
+      ]);
+
+      await executeScene(makeExecutor(), makeScene(), undefined, { model: "gpt-4" });
+
+      const firstArg = mockedCallJudge.mock.calls[0][0];
+      expect(firstArg).toBe('{\n  "city": "Paris"\n}');
+      expect(firstArg).not.toContain("[object Object]");
     });
 
     it("calls callJudge for pending judgements", async () => {

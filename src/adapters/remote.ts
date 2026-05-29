@@ -55,7 +55,7 @@ export interface RemoteAdapterOptions {
  *
  * await agent(executor, () => {
  *   scene("What is 2+2?").expect("response", (r) => {
- *     expect(r).toBe.containing("4");
+ *     expect(r).toBe.containingText("4");
  *   });
  * });
  * ```
