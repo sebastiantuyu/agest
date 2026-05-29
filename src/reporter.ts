@@ -160,6 +160,9 @@ function renderTimelineEvent(e: TimelineEvent): string[] {
   if (e.tokens) {
     out.push(`                tokens: { input: ${e.tokens.input}, output: ${e.tokens.output} }`);
   }
+  if (e.cachedInputTokens != null && e.cachedInputTokens > 0) {
+    out.push(`                cached_input_tokens: ${e.cachedInputTokens}`);
+  }
   if (e.cost?.totalUsd != null) {
     out.push(`                cost_usd: ${formatUsd(e.cost.totalUsd)}`);
     out.push(`                cost_source: ${e.cost.source}`);

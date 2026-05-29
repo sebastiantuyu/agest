@@ -16,6 +16,7 @@ export interface ParsedTimelineEvent {
   startMs: number;
   durationMs: number;
   tokens?: { input: number; output: number };
+  cachedInputTokens?: number;
   costUsd?: number;
   costSource?: string;
   runIndex?: number;
@@ -249,6 +250,7 @@ export function parseScenes(content: string): ParsedScene[] | undefined {
         case "start_ms": event.startMs = parseFloat(value); break;
         case "duration_ms": event.durationMs = parseFloat(value); break;
         case "tokens": event.tokens = parseTokens(value); break;
+        case "cached_input_tokens": event.cachedInputTokens = parseInt(value, 10); break;
         case "cost_usd": event.costUsd = parseFloat(value); break;
         case "cost_source": event.costSource = value; break;
         case "run_index": event.runIndex = parseInt(value, 10); break;

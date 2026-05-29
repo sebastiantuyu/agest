@@ -187,6 +187,58 @@ describe("summarizeEvents", () => {
   });
 });
 
+describe("tool naming", () => {
+  it("prefers the runName over the serialized tool class name", async () => {
+    const trace = await createTrace();
+    const h = trace.callbacks[0];
+    // LangChain serializes the tool by class (DynamicStructuredTool) and passes
+    // the real tool name as `runName` (7th arg).
+    h.handleToolStart(
+      { id: ["langchain", "tools", "DynamicStructuredTool"], name: "DynamicStructuredTool" },
+      "query",
+      "tool-1",
+      undefined,
+      undefined,
+      undefined,
+      "search_recipes",
+    );
+    h.handleToolEnd("ok", "tool-1");
+    const { events } = trace.collect();
+    expect(events[0].name).toBe("search_recipes");
+  });
+});
+
+describe("OpenRouter usage accounting", () => {
+  it("uses provider cost from response_metadata.usage and captures cached tokens", async () => {
+    const trace = await createTrace({ model: "openai/gpt-5.4" });
+    const h = trace.callbacks[0];
+    h.handleChatModelStart(
+      { id: ["chat", "ChatOpenAI"] }, [], "r1", undefined,
+      { invocation_params: { model: "openai/gpt-5.4" } },
+    );
+    h.handleLLMEnd(
+      {
+        generations: [[{
+          message: {
+            usage_metadata: {
+              input_tokens: 5299,
+              output_tokens: 245,
+              input_token_details: { cache_read: 4800 },
+            },
+            response_metadata: { usage: { cost: 0.0021, prompt_tokens_details: { cached_tokens: 4800 } } },
+          },
+        }]],
+      },
+      "r1",
+    );
+    const { events, cost } = trace.collect();
+    // provider cost wins over the (much higher) table estimate
+    expect(cost?.source).toBe("provider");
+    expect(cost?.totalUsd).toBeCloseTo(0.0021);
+    expect(events[0].cachedInputTokens).toBe(4800);
+  });
+});
+
 describe("createTrace", () => {
   it("collects events, tokens, and cost from a traced run; memoizes collect()", async () => {
     const trace = await createTrace({ model: "gpt-4o" });

@@ -51,8 +51,9 @@ export function renderTerminalWaterfall(
     const nameLabel = truncate(e.name, nameWidth).padEnd(nameWidth);
     const dur = `${Math.round(e.durationMs)}ms`.padStart(7);
     const cost = e.cost?.totalUsd != null ? `  ${fmtUsd(e.cost.totalUsd)}` : "";
+    const cached = e.cachedInputTokens ? `  ${c.dim(`(${e.cachedInputTokens} cached)`)}` : "";
     const err = e.error ? `  ${c.red("✗ " + truncate(e.error, 40))}` : "";
 
-    return `${indent}${c.dim(kindLabel)} ${nameLabel} ${bar} ${c.dim(dur)}${c.dim(cost)}${err}`;
+    return `${indent}${c.dim(kindLabel)} ${nameLabel} ${bar} ${c.dim(dur)}${c.dim(cost)}${cached}${err}`;
   });
 }

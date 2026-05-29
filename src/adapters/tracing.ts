@@ -86,6 +86,7 @@ export async function createTracingHandle(baselineMs: number): Promise<TracingHa
       const endMs = now() - baselineMs;
       const tokens = extractTokensFromLLMOutput(output);
       const providerCost = extractProviderCost(output);
+      const cachedInputTokens = extractCachedTokens(output);
       const name = open.name ?? extractModelNameFromOutput(output) ?? "model";
       if (name && name !== "model") lastModelName = name;
 
@@ -103,6 +104,7 @@ export async function createTracingHandle(baselineMs: number): Promise<TracingHa
         endMs,
         durationMs: Math.max(0, endMs - open.startMs),
         tokens,
+        cachedInputTokens,
         cost: stripCostIfEmpty(cost),
       });
     }
@@ -126,10 +128,14 @@ export async function createTracingHandle(baselineMs: number): Promise<TracingHa
       tool: any,
       _input: string,
       runId: string,
+      _parentRunId?: string,
+      _tags?: string[],
+      _metadata?: Record<string, unknown>,
+      runName?: string,
     ): void {
       openTools.set(runId, {
         startMs: now() - baselineMs,
-        name: extractToolName(tool) ?? "tool",
+        name: extractToolName(tool, runName) ?? "tool",
       });
     }
 
@@ -335,27 +341,80 @@ function extractTokensFromLLMOutput(
   return { input, output: out };
 }
 
+/** Collect the usage-bearing objects LangChain/OpenRouter may attach to an LLM result. */
+function usageObjects(output: any): any[] {
+  const msg = output?.generations?.[0]?.[0]?.message;
+  return [
+    output?.llmOutput?.usage,
+    output?.llmOutput?.tokenUsage,
+    output?.llmOutput?.estimatedTokenUsage,
+    output?.llmOutput,
+    msg?.usage_metadata,
+    msg?.response_metadata?.usage,
+    msg?.response_metadata?.tokenUsage,
+    msg?.response_metadata?.estimatedTokenUsage,
+    msg?.response_metadata,
+    msg?.additional_kwargs?.usage,
+  ].filter((u) => u && typeof u === "object");
+}
+
+/**
+ * OpenRouter (with `usage: { include: true }`) reports real USD cost. LangChain
+ * surfaces it inconsistently across versions, so scan the known usage objects
+ * for a numeric `cost` / `total_cost`.
+ */
 function extractProviderCost(output: any): number | undefined {
-  const candidates = [
-    output?.llmOutput?.usage?.cost,
-    output?.llmOutput?.cost,
-    output?.generations?.[0]?.[0]?.message?.usage_metadata?.total_cost,
-    output?.generations?.[0]?.[0]?.message?.response_metadata?.usage?.cost,
-    output?.generations?.[0]?.[0]?.message?.response_metadata?.cost,
-  ];
-  for (const c of candidates) {
+  for (const u of usageObjects(output)) {
+    const c =
+      (typeof u.cost === "number" ? u.cost : undefined) ??
+      (typeof u.total_cost === "number" ? u.total_cost : undefined) ??
+      (typeof u.cost_usd === "number" ? u.cost_usd : undefined) ??
+      (typeof u.cost_details?.upstream_inference_cost === "number"
+        ? u.cost_details.upstream_inference_cost
+        : undefined);
     if (typeof c === "number" && Number.isFinite(c)) return c;
   }
   return undefined;
 }
 
-function extractToolName(tool: any): string | undefined {
-  if (!tool) return undefined;
-  if (typeof tool.name === "string") return tool.name;
-  if (Array.isArray(tool.id) && tool.id.length > 0) {
-    return String(tool.id[tool.id.length - 1]);
+/**
+ * Cached (prompt-cache hit) input tokens, when the provider reports them.
+ * Charged at a fraction of the normal input rate, so surfacing them lets the
+ * report explain why provider cost is below the flat-table estimate.
+ */
+function extractCachedTokens(output: any): number | undefined {
+  for (const u of usageObjects(output)) {
+    const cached =
+      u.input_token_details?.cache_read ??
+      u.prompt_tokens_details?.cached_tokens ??
+      u.cache_read_input_tokens ??
+      u.cached_tokens;
+    if (typeof cached === "number" && cached > 0) return cached;
   }
   return undefined;
+}
+
+const TOOL_CLASS_NAMES = new Set([
+  "DynamicStructuredTool",
+  "DynamicTool",
+  "StructuredTool",
+  "Tool",
+]);
+
+function extractToolName(tool: any, runName?: string): string | undefined {
+  // `runName` is the actual tool name LangChain assigns the run (e.g.
+  // "search_recipes"); prefer it over the serialized class name.
+  if (runName && !TOOL_CLASS_NAMES.has(runName)) return runName;
+  if (tool) {
+    if (typeof tool.name === "string" && !TOOL_CLASS_NAMES.has(tool.name)) return tool.name;
+    if (typeof tool.kwargs?.name === "string") return tool.kwargs.name;
+    if (Array.isArray(tool.id) && tool.id.length > 0) {
+      const last = String(tool.id[tool.id.length - 1]);
+      if (!TOOL_CLASS_NAMES.has(last)) return last;
+    }
+    if (typeof tool.name === "string") return tool.name;
+  }
+  return runName;
 }
 
 function stripCostIfEmpty(cost: CostBreakdown): CostBreakdown | undefined {

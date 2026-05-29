@@ -23,6 +23,8 @@ export interface TimelineEvent {
   endMs: number;
   durationMs: number;
   tokens?: { input: number; output: number };
+  /** Prompt-cache-hit input tokens (subset of tokens.input), when reported by the provider */
+  cachedInputTokens?: number;
   cost?: CostBreakdown;
   /** Index of the run this event belongs to (only set when aggregating across multi-run scenes) */
   runIndex?: number;

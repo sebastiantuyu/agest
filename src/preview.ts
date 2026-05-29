@@ -270,6 +270,7 @@ function renderWaterfallHtml(report: ParsedReport): string {
             `${e.kind}: ${e.name}`,
             `start ${Math.round(e.startMs)}ms · ${Math.round(e.durationMs)}ms`,
             e.tokens ? `${e.tokens.input}→${e.tokens.output} tok` : "",
+            e.cachedInputTokens ? `${e.cachedInputTokens} cached` : "",
             e.costUsd != null ? fmtUsdHtml(e.costUsd) : "",
             e.error ? `error: ${e.error}` : "",
           ]
