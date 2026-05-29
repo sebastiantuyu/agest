@@ -1,5 +1,6 @@
 import type { TimelineEvent, CostBreakdown } from "../types";
 import { computeCost } from "../pricing";
+import { logger } from "../logger";
 
 type RunId = string;
 
@@ -34,7 +35,11 @@ export async function createTracingHandle(baselineMs: number): Promise<TracingHa
   let BaseCallbackHandler: any;
   try {
     ({ BaseCallbackHandler } = await import("@langchain/core/callbacks/base"));
-  } catch {
+  } catch (err) {
+    logger.debug(
+      `[agest] tracing disabled: could not load @langchain/core/callbacks/base — ` +
+        `install @langchain/core as a peer to capture per-scene cost/timeline. (${(err as Error).message})`
+    );
     return { callbacks: [], drain: () => ({ events: [] }) };
   }
 

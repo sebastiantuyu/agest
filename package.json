@@ -58,5 +58,13 @@
   },
   "dependencies": {
     "@supercharge/promise-pool": "3.3.0"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.3.0 <2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    }
   }
 }
