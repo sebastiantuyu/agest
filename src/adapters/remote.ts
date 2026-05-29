@@ -1,4 +1,4 @@
-import type { AgentExecutor, AgentResponse } from "../types";
+import type { AgentExecutor, AgentResponse, ExecutorOptions } from "../types";
 
 export interface RemoteAdapterOptions {
   /** HTTP headers (e.g. Authorization) */
@@ -73,12 +73,13 @@ export function remote(
     metadata: staticMetadata,
   } = options;
 
-  return async (input: string): Promise<AgentResponse> => {
+  return async (input: string, execOptions?: ExecutorOptions): Promise<AgentResponse> => {
     let res: Response;
     try {
       const fetchOptions: RequestInit = {
         method,
         headers: { "Content-Type": "application/json", ...headers },
+        signal: execOptions?.signal,
       };
 
       if (method !== "GET") {

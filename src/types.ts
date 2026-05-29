@@ -1,4 +1,8 @@
-export type AgentExecutor = (input: string) => Promise<AgentResponse>;
+export interface ExecutorOptions {
+  signal?: AbortSignal;
+}
+
+export type AgentExecutor = (input: string, options?: ExecutorOptions) => Promise<AgentResponse>;
 
 export interface AgentResponse {
   text: string;
