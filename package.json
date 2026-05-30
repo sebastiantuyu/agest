@@ -33,6 +33,7 @@
     "dev": "tsx examples/basic.test.ts",
     "test:examples": "tsx examples/basic.test.ts && tsx examples/agent.test.ts",
     "stats": "tsx src/cli.ts stats",
+    "usage": "tsx src/cli.ts usage",
     "preview": "tsx src/cli.ts preview",
     "site:preview": "npx serve site -p 3000",
     "release:patch": "npm version patch && git push && git push --tags",
