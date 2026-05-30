@@ -18,11 +18,16 @@ export interface UsageModelRow {
   runs: number;
 }
 
-export interface UsageDayBucket {
-  day: string; // YYYY-MM-DD
+export interface UsageTally {
   inTokens: number;
   outTokens: number;
   cost: number;
+}
+
+export interface UsageDayBucket extends UsageTally {
+  day: string; // YYYY-MM-DD
+  /** Per-model split within this day — feeds the stacked column chart. */
+  models: Record<string, UsageTally>;
 }
 
 export interface UsageSummary {
@@ -108,10 +113,15 @@ export function aggregateUsage(
     byModel.set(m, row);
 
     const dayKey = rec.timestamp.slice(0, 10);
-    const day = byDay.get(dayKey) ?? { day: dayKey, inTokens: 0, outTokens: 0, cost: 0 };
+    const day = byDay.get(dayKey) ?? { day: dayKey, inTokens: 0, outTokens: 0, cost: 0, models: {} };
     day.inTokens += inTok;
     day.outTokens += outTok;
     day.cost += cost;
+    const dm = day.models[m] ?? { inTokens: 0, outTokens: 0, cost: 0 };
+    dm.inTokens += inTok;
+    dm.outTokens += outTok;
+    dm.cost += cost;
+    day.models[m] = dm;
     byDay.set(dayKey, day);
   }
 
@@ -150,6 +160,19 @@ function formatMetric(
 }
 
 const W = 62;
+const CHART_H = 8; // chart height in rows
+const MAX_COLS = 48; // hard cap on columns before chunking kicks in
+
+type ColorFn = (s: string) => string;
+
+/** Stacked-chart palette — stable model→color by rank; past it, gray. */
+const PALETTE: ColorFn[] = [c.cyan, c.green, c.yellow, c.magenta, c.blue, c.red];
+
+function assignColors(models: string[]): Map<string, ColorFn> {
+  const m = new Map<string, ColorFn>();
+  models.forEach((model, i) => m.set(model, PALETTE[i] ?? c.gray));
+  return m;
+}
 
 function bar(value: number, max: number, width = 24): string {
   if (max <= 0) return "░".repeat(width);
@@ -161,21 +184,159 @@ function windowLabel(window: UsageWindow): string {
   return window === "all" ? "all time" : `last ${WINDOW_DAYS[window]} days`;
 }
 
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function render(s: UsageSummary): void {
+/** "2025-05-07" → "May 7" */
+function formatDayLabel(dayKey: string): string {
+  const [, mo, d] = dayKey.split("-").map(Number);
+  return `${MONTHS[(mo - 1) % 12]} ${d}`;
+}
+
+function dayKeyOf(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Inclusive list of YYYY-MM-DD from start to end (capped to avoid runaway). */
+function enumerateDays(startKey: string, endKey: string): string[] {
+  const out: string[] = [];
+  let t = Date.parse(`${startKey}T00:00:00Z`);
+  const end = Date.parse(`${endKey}T00:00:00Z`);
+  for (let i = 0; t <= end && i < 4000; i++, t += DAY_MS) out.push(dayKeyOf(t));
+  return out;
+}
+
+/** Color bars/legend unless the terminal opts out of color. */
+function chartDisabled(): boolean {
+  return Boolean(process.env.NO_COLOR) || process.env.TERM === "dumb";
+}
+
+interface Column {
+  label: string; // first day of the (possibly chunked) range
+  total: number; // chosen-metric total
+  perModel: Map<string, number>;
+}
+
+/**
+ * Build the continuous date axis (window-start → today), one column per day,
+ * chunking contiguous days when the range is wider than the terminal so
+ * `--window all` never overflows. Empty days survive as zero-height columns.
+ */
+function buildColumns(s: UsageSummary, now: number, modelOrder: string[]): Column[] {
+  const byDay = new Map(s.days.map((d) => [d.day, d]));
+  const endKey = dayKeyOf(now);
+  const startKey =
+    s.window === "all"
+      ? (s.days[0]?.day ?? endKey)
+      : dayKeyOf(now - (WINDOW_DAYS[s.window] - 1) * DAY_MS);
+  const axis = enumerateDays(startKey, endKey);
+
+  const termCols = process.stdout.columns ?? 80;
+  const maxCols = Math.max(8, Math.min(MAX_COLS, termCols - 12));
+  const chunk = Math.max(1, Math.ceil(axis.length / maxCols));
+
+  const cols: Column[] = [];
+  for (let i = 0; i < axis.length; i += chunk) {
+    const slice = axis.slice(i, i + chunk);
+    const perModel = new Map<string, number>();
+    let total = 0;
+    for (const dk of slice) {
+      const b = byDay.get(dk);
+      if (!b) continue;
+      for (const model of modelOrder) {
+        const t = b.models[model];
+        if (!t) continue;
+        const v = metricValue(t, s.metric);
+        perModel.set(model, (perModel.get(model) ?? 0) + v);
+        total += v;
+      }
+    }
+    cols.push({ label: slice[0], total, perModel });
+  }
+  return cols;
+}
+
+/**
+ * Date labels under the axis. The first (left-aligned) and last (right-aligned,
+ * = today) are always anchored so the time range reads end-to-end; a couple of
+ * evenly-spaced middle labels fill in when there's room. A label is skipped
+ * rather than drawn over a neighbour, so nothing overlaps.
+ */
+function renderAxisLabels(cols: Column[], gutter: number): string {
+  const n = cols.length;
+  const line: string[] = new Array(n).fill(" ");
+
+  const place = (idx: number, preferStart: number) => {
+    const label = formatDayLabel(cols[idx].label);
+    const start = Math.max(0, Math.min(preferStart, n - label.length));
+    for (let k = 0; k < label.length; k++) if (line[start + k] !== " ") return;
+    for (let k = 0; k < label.length; k++) line[start + k] = label[k];
+  };
+
+  if (n > 0) place(0, 0);
+  if (n > 1) place(n - 1, n - formatDayLabel(cols[n - 1].label).length);
+  const mids = n > 16 ? [Math.round(n / 3), Math.round((2 * n) / 3)] : n > 8 ? [Math.round(n / 2)] : [];
+  for (const idx of mids) place(idx, idx);
+
+  return `  ${" ".repeat(gutter)} ${c.dim(line.join(""))}`;
+}
+
+/**
+ * Vertical stacked column chart over a continuous date axis. Each column is a
+ * day (or chunk); each model a solid color. Segment heights use cumulative
+ * rounding so they sum exactly to the column height (no drift).
+ */
+function renderVerticalChart(
+  s: UsageSummary,
+  now: number,
+  colors: Map<string, ColorFn>,
+  modelOrder: string[],
+): void {
+  const cols = buildColumns(s, now, modelOrder);
+  const max = Math.max(0, ...cols.map((col) => col.total));
   const metricTitle = s.metric === "cost" ? "Cost" : "Tokens";
 
-  console.log("\n" + "━".repeat(W));
-  console.log(
-    `  ${c.bold("AGEST USAGE")}  ${c.dim("·")}  ${s.totals.runs} run${s.totals.runs !== 1 ? "s" : ""}` +
-      `  ${c.dim("·")}  ${c.dim(windowLabel(s.window))}  ${c.dim("·")}  ${c.dim(`metric: ${s.metric}`)}`,
-  );
-  console.log("━".repeat(W));
+  const maxLabel = s.metric === "cost" ? formatCost(max) : formatTokens(max);
+  const gw = Math.max(maxLabel.length, 1);
 
-  // Per-day chart
+  const stacks = cols.map((col) => {
+    const cells: (string | null)[] = new Array(CHART_H).fill(null);
+    if (max > 0 && col.total > 0) {
+      let running = 0;
+      for (const model of modelOrder) {
+        const v = col.perModel.get(model) ?? 0;
+        if (v <= 0) continue;
+        const lo = Math.round((running / max) * CHART_H);
+        running += v;
+        const hi = Math.round((running / max) * CHART_H);
+        for (let r = lo; r < hi && r < CHART_H; r++) cells[r] = model;
+      }
+      // Guarantee an active column shows at least one cell.
+      if (!cells.some(Boolean)) {
+        const top = [...col.perModel.entries()].sort((a, b) => b[1] - a[1])[0];
+        if (top) cells[0] = top[0];
+      }
+    }
+    return cells;
+  });
+
+  console.log(`\n  ${metricTitle} per Day`);
+  for (let r = CHART_H - 1; r >= 0; r--) {
+    const label = r === CHART_H - 1 ? maxLabel : r === 0 ? "0" : "";
+    const gutter = c.dim(label.padStart(gw));
+    const row = stacks
+      .map((cells) => {
+        const model = cells[r];
+        return model ? (colors.get(model) ?? c.gray)("█") : " ";
+      })
+      .join("");
+    console.log(`  ${gutter} ${row}`);
+  }
+  console.log(renderAxisLabels(cols, gw));
+}
+
+/** Horizontal per-day bars — the no-color / dumb-terminal fallback. */
+function renderHorizontalChart(s: UsageSummary): void {
+  const metricTitle = s.metric === "cost" ? "Cost" : "Tokens";
   console.log(`\n  ${metricTitle} per Day`);
   console.log("  " + "─".repeat(W - 2));
   const maxDay = Math.max(0, ...s.days.map((d) => metricValue(d, s.metric)));
@@ -184,20 +345,40 @@ function render(s: UsageSummary): void {
     const val = formatMetric(d, s.metric).padStart(8);
     console.log(`  ${c.dim(d.day)}  ${b}  ${val}`);
   }
+}
 
-  // Per-model breakdown
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+function render(s: UsageSummary, now: number): void {
+  const colors = assignColors(s.rows.map((r) => r.model));
+  const modelOrder = s.rows.map((r) => r.model);
+
+  console.log("\n" + "━".repeat(W));
+  console.log(
+    `  ${c.bold("AGEST USAGE")}  ${c.dim("·")}  ${s.totals.runs} run${s.totals.runs !== 1 ? "s" : ""}` +
+      `  ${c.dim("·")}  ${c.dim(windowLabel(s.window))}  ${c.dim("·")}  ${c.dim(`metric: ${s.metric}`)}`,
+  );
+  console.log("━".repeat(W));
+
+  if (chartDisabled()) renderHorizontalChart(s);
+  else renderVerticalChart(s, now, colors, modelOrder);
+
+  // Per-model breakdown — colored ● dot ties each model to its chart color.
   console.log(`\n  By Model`);
   console.log("  " + "─".repeat(W - 2));
   const grand = s.rows.reduce((sum, r) => sum + metricValue(r, s.metric), 0);
   for (const r of s.rows) {
     const pct = grand > 0 ? (metricValue(r, s.metric) / grand) * 100 : 0;
-    const head = `${c.bold(r.model)} ${c.dim(`(${pct.toFixed(1)}%)`)}`;
+    const dot = (colors.get(r.model) ?? c.gray)("●");
+    const head = `${dot} ${c.bold(r.model)} ${c.dim(`(${pct.toFixed(1)}%)`)}`;
     const detail =
       `In: ${formatTokens(r.inTokens)} ${c.dim("·")} Out: ${formatTokens(r.outTokens)}` +
       (s.hasCost ? ` ${c.dim("·")} ${formatCost(r.cost)}` : "") +
       ` ${c.dim(`· ${r.runs} run${r.runs !== 1 ? "s" : ""}`)}`;
     console.log(`  ${head}`);
-    console.log(`    ${c.dim(detail)}`);
+    console.log(`      ${c.dim(detail)}`);
   }
 
   // Totals
@@ -252,12 +433,8 @@ async function main(args: string[]): Promise<void> {
     return;
   }
 
-  const summary = aggregateUsage(records, {
-    window,
-    metric,
-    now: Date.now(),
-    model: values.model,
-  });
+  const now = Date.now();
+  const summary = aggregateUsage(records, { window, metric, now, model: values.model });
 
   if (summary.filteredCount === 0) {
     const scope = values.model ? ` for model "${values.model}"` : "";
@@ -265,7 +442,7 @@ async function main(args: string[]): Promise<void> {
     return;
   }
 
-  render(summary);
+  render(summary, now);
 }
 
 export { main };

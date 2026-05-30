@@ -17,6 +17,8 @@ export const c = {
   red: (s: string) => `${ESC}[31m${s}${RESET}`,
   yellow: (s: string) => `${ESC}[33m${s}${RESET}`,
   cyan: (s: string) => `${ESC}[36m${s}${RESET}`,
+  magenta: (s: string) => `${ESC}[35m${s}${RESET}`,
+  blue: (s: string) => `${ESC}[34m${s}${RESET}`,
   gray: (s: string) => `${ESC}[90m${s}${RESET}`,
 };
 

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   aggregateUsage,
@@ -137,6 +138,45 @@ describe("aggregateUsage day buckets", () => {
     // The two day-1 records merge into one bucket of 2x tokens.
     const newest = s.days[s.days.length - 1];
     expect(newest.inTokens).toBe(200);
+  });
+
+  it("carries a per-model split on each day (feeds the stacked chart)", () => {
+    const s = agg([
+      rec({ timestamp: daysAgo(1), dimensions: { model: "opus" }, totalInputTokens: 100, totalOutputTokens: 0 }),
+      rec({ timestamp: daysAgo(1), dimensions: { model: "sonnet" }, totalInputTokens: 30, totalOutputTokens: 0 }),
+    ]);
+    const day = s.days[s.days.length - 1];
+    expect(Object.keys(day.models).sort()).toEqual(["opus", "sonnet"]);
+    expect(day.models.opus.inTokens).toBe(100);
+    expect(day.models.sonnet.inTokens).toBe(30);
+  });
+});
+
+describe("aggregateUsage over a real (anonymized) checkpoint log", () => {
+  const records: CheckpointRecord[] = readFileSync(
+    new URL("./__fixtures__/checkpoints.sample.jsonl", import.meta.url),
+    "utf8",
+  )
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as CheckpointRecord);
+
+  // The fixture is single-day (2026-05-30), so window with a `now` on that day.
+  const FIXTURE_NOW = Date.parse("2026-05-30T23:59:59Z");
+
+  it("rolls up the 17-record sample to its known totals", () => {
+    const s = aggregateUsage(records, { window: "all", metric: "tokens", now: FIXTURE_NOW });
+    expect(s.totals.runs).toBe(17);
+    expect(s.totals.inTokens).toBe(312_622);
+    expect(s.totals.outTokens).toBe(12_007);
+    expect(s.totals.cost).toBeCloseTo(0.336988, 5);
+  });
+
+  it("surfaces the null-model record as the 'unknown' model", () => {
+    const s = aggregateUsage(records, { window: "all", metric: "tokens", now: FIXTURE_NOW });
+    const models = Object.fromEntries(s.rows.map((r) => [r.model, r.runs]));
+    expect(models["openai/gpt-5.4"]).toBe(16);
+    expect(models["unknown"]).toBe(1);
   });
 });
 
