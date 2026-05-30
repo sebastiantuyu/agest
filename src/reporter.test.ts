@@ -90,6 +90,28 @@ describe("formatReport", () => {
     expect(output).not.toContain("average_output_tokens_per_case");
   });
 
+  it("renders a serialized preview for a value-only (structured) failed response", () => {
+    const output = formatReport({
+      ...minimalReport,
+      successRate: 0,
+      failedCases: ["Q1"],
+      failedCaseErrors: { Q1: "structural mismatch" },
+      results: [
+        {
+          prompt: "Q1",
+          response: { value: { city: "Paris" } },
+          duration: 5,
+          passed: false,
+          error: "structural mismatch",
+        },
+      ],
+    });
+    // Previously `response.text` was undefined for value-only responses and the
+    // preview was dropped; now resolveText serializes the native value.
+    expect(output).toContain('response: "{');
+    expect(output).toContain("Paris");
+  });
+
   it("shows model and hashes", () => {
     const output = formatReport({
       ...minimalReport,

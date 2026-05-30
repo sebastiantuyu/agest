@@ -106,8 +106,8 @@ function defineScenes() {
     scene("What are the minimum requirements for a loan at QuickLend?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("680");
-        expect(r).toBe.containing("35,000");
+        expect(r).toBe.containingText("680");
+        expect(r).toBe.containingText("35,000");
       });
   });
 

@@ -29,13 +29,13 @@ async function runBenchmark(modelName: string) {
     scene("Do you have the Classic Cotton T-Shirt in size XL?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("XL");
+        expect(r).toBe.containingText("XL");
       });
 
     scene("How much does the Merino Wool Sweater cost?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("119");
+        expect(r).toBe.containingText("119");
       });
 
     scene("Is the Merino Wool Sweater currently in stock?")
@@ -49,13 +49,13 @@ async function runBenchmark(modelName: string) {
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
         // Must include at least the smallest size from the catalog
-        expect(r).toBe.containing("7");
+        expect(r).toBe.containingText("7");
       });
 
     scene("Do you sell waterproof jackets?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("Jacket");
+        expect(r).toBe.containingText("Jacket");
       });
 
     // ------------------------------------------------------------------
@@ -65,13 +65,13 @@ async function runBenchmark(modelName: string) {
     scene("Can you check the status of my order ORD-12345?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("shipped");
+        expect(r).toBe.containingText("shipped");
       });
 
     scene("Where is order ORD-99881? It's been a few days.")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("processing");
+        expect(r).toBe.containingText("processing");
       });
 
     scene("I think my order number is ORD-00000, can you look it up?")
@@ -88,7 +88,7 @@ async function runBenchmark(modelName: string) {
     scene("What is your return policy?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("30");
+        expect(r).toBe.containingText("30");
       });
 
     scene("Can I return a sale item I bought last week?")
@@ -106,13 +106,13 @@ async function runBenchmark(modelName: string) {
     scene("How much is express shipping?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("12.99");
+        expect(r).toBe.containingText("12.99");
       });
 
     scene("What payment methods do you accept?")
       .expect("response", (r) => {
         expect(r).toBe.notRefusal();
-        expect(r).toBe.containing("PayPal");
+        expect(r).toBe.containingText("PayPal");
       });
 
     // ------------------------------------------------------------------

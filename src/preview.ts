@@ -235,6 +235,97 @@ function renderFailedCases(
         </details>`;
 }
 
+const WF_MODEL = "#38bdf8";
+const WF_TOOL = "#facc15";
+const WF_ERROR = "#f87171";
+
+function fmtUsdHtml(n: number): string {
+  if (n === 0) return "$0";
+  return "$" + Number(n.toFixed(4)).toString();
+}
+
+/**
+ * Chrome-DevTools-style waterfall for a report's per-scene timelines. Bars are
+ * absolutely positioned within a track by start_ms / duration_ms. Returns "" if
+ * the report carries no timeline data (older reports / non-traced executors).
+ */
+function renderWaterfallHtml(report: ParsedReport): string {
+  const scenes = (report.scenes ?? []).filter((s) => s.timeline && s.timeline.length > 0);
+  if (scenes.length === 0) return "";
+
+  const sceneBlocks = scenes
+    .map((scene) => {
+      const events = scene.timeline!;
+      const t0 = Math.min(...events.map((e) => e.startMs));
+      const tEnd = Math.max(...events.map((e) => e.startMs + e.durationMs));
+      const span = Math.max(1, tEnd - t0);
+
+      const rows = events
+        .map((e) => {
+          const left = ((e.startMs - t0) / span) * 100;
+          const width = Math.max(0.6, (e.durationMs / span) * 100);
+          const bg = e.error ? WF_ERROR : e.kind === "model" ? WF_MODEL : WF_TOOL;
+          const icon = e.kind === "model" ? "◆" : "▸";
+          const tip = [
+            `${e.kind}: ${e.name}`,
+            `start ${Math.round(e.startMs)}ms · ${Math.round(e.durationMs)}ms`,
+            e.tokens ? `${e.tokens.input}→${e.tokens.output} tok` : "",
+            e.cachedInputTokens ? `${e.cachedInputTokens} cached` : "",
+            e.costUsd != null ? fmtUsdHtml(e.costUsd) : "",
+            e.error ? `error: ${e.error}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          const cost = e.costUsd != null ? fmtUsdHtml(e.costUsd) : "";
+          return `
+            <div class="flex items-center gap-2 text-[11px] leading-5">
+              <span class="w-44 shrink-0 truncate ${e.error ? "text-red-400" : "text-zinc-400"}" title="${escHtml(e.name)}">
+                <span style="color:${bg}">${icon}</span> ${escHtml(e.name)}
+              </span>
+              <div class="relative flex-1 h-3 bg-zinc-800/40 rounded">
+                <div class="absolute top-0 h-3 rounded" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%;background:${bg}" title="${escHtml(tip)}"></div>
+              </div>
+              <span class="w-16 shrink-0 text-right text-zinc-500">${Math.round(e.durationMs)}ms</span>
+              <span class="w-16 shrink-0 text-right text-zinc-500">${cost}</span>
+            </div>`;
+        })
+        .join("\n");
+
+      const meta = [
+        scene.tokens ? `${scene.tokens.input}→${scene.tokens.output} tok` : "",
+        scene.costUsd != null ? fmtUsdHtml(scene.costUsd) : "",
+        scene.costSource ? scene.costSource : "",
+        scene.durationMs != null ? `${Math.round(scene.durationMs)}ms` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return `
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs text-zinc-300 truncate" title="${escHtml(scene.prompt)}">${escHtml(scene.prompt)}</span>
+            <span class="text-[11px] text-zinc-500 shrink-0 ml-3">${escHtml(meta)}</span>
+          </div>
+          <div class="space-y-1">${rows}</div>
+        </div>`;
+    })
+    .join("\n");
+
+  return `
+    <details class="mt-2" open>
+      <summary class="text-xs text-sky-400 cursor-pointer hover:text-sky-300 select-none">
+        waterfall &middot; ${scenes.length} scene${scenes.length !== 1 ? "s" : ""}
+      </summary>
+      <div class="mt-3 mb-2 pl-3 border-l border-zinc-800 space-y-5">
+        <div class="flex gap-4 text-[10px] text-zinc-500">
+          <span><span style="color:${WF_MODEL}">◆</span> model</span>
+          <span><span style="color:${WF_TOOL}">▸</span> tool</span>
+        </div>
+        ${sceneBlocks}
+      </div>
+    </details>`;
+}
+
 function renderRunRow(entry: RunEntry, idx: number): string {
   const { report, delta, diffLines } = entry;
   const pct = report.successRate * 100;
@@ -285,6 +376,7 @@ function renderRunRow(entry: RunEntry, idx: number): string {
           </div>
           <div class="ml-10 mt-0.5 flex gap-3 flex-wrap">${dimTags}</div>
           ${diffHtml}
+          <div class="ml-10">${renderWaterfallHtml(report)}</div>
         </div>`;
 }
 
@@ -1144,6 +1236,14 @@ function renderSingleRun(report: ParsedReport): string {
             : ""
         }
         ${
+          report.totalCostUsd != null
+            ? `<div>
+          <span class="text-zinc-500">Total Cost</span>
+          <p class="text-zinc-300">${fmtUsdHtml(report.totalCostUsd)}${report.totalInputTokens != null ? ` <span class="text-zinc-600">· ${report.totalInputTokens}→${report.totalOutputTokens} tok</span>` : ""}</p>
+        </div>`
+            : ""
+        }
+        ${
           report.tools && report.tools.length > 0
             ? `<div>
           <span class="text-zinc-500">Tools</span>
@@ -1152,6 +1252,7 @@ function renderSingleRun(report: ParsedReport): string {
             : ""
         }
       </div>
+      ${renderWaterfallHtml(report)}
       ${failedSection}
     </div>`;
 }

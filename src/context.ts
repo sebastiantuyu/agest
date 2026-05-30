@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { appendFileSync } from "node:fs";
 import type {
   AgentExecutor,
   AgentReport,
@@ -7,31 +8,46 @@ import type {
   SceneResult,
 } from "./types";
 import { executeScene } from "./runner";
+import { resolveText } from "./resolve";
 import { formatReport, writeReport, writeDiffEntry } from "./reporter";
 import { logger, c } from "./logger";
 import { loadConfig } from "./config";
+import { setPricingOverrides } from "./pricing";
+import { renderTerminalWaterfall } from "./waterfall";
+import type { StandardSchemaV1 } from "./schema";
 import { PromisePool } from "@supercharge/promise-pool";
 
-export class SceneBuilder {
+/**
+ * Builds a scene. Generic over `T`, the agent's native value type, so the
+ * known fields hand a typed value to the assertion callback:
+ *   - `"value"` / `"response"` → `T`
+ *   - `"text"`                 → `string`
+ *   - `"refusal"`              → `boolean | undefined`
+ *   - any dot-path / other     → `any` (a string field can't be typed)
+ * `T` flows in from a schema-typed `agent()` via the scene fn passed to its
+ * callback. The free `scene()` import stays `SceneBuilder<string>`.
+ */
+export class SceneBuilder<T = string> {
   private _assertions: Array<{ field: string; fn: (value: any) => void }> = [];
   private _timeout?: number;
   private _turns?: number;
   private _runs?: number;
   private _suite?: string;
+  private _schema?: StandardSchemaV1;
 
   constructor(private _prompt: string) {}
 
-  timeout(ms: number): SceneBuilder {
+  timeout(ms: number): this {
     this._timeout = ms;
     return this;
   }
 
-  turns(n: number): SceneBuilder {
+  turns(n: number): this {
     this._turns = n;
     return this;
   }
 
-  runs(n: number): SceneBuilder {
+  runs(n: number): this {
     this._runs = Math.max(1, Math.round(n));
     return this;
   }
@@ -41,8 +57,21 @@ export class SceneBuilder {
     this._suite = name;
   }
 
-  expect(field: string, fn: (value: any) => void): SceneBuilder {
+  expect(field: "value" | "response", fn: (value: T) => void): this;
+  expect(field: "text", fn: (value: string) => void): this;
+  expect(field: "refusal", fn: (value: boolean | undefined) => void): this;
+  expect(field: string, fn: (value: any) => void): this;
+  expect(field: string, fn: (value: any) => void): this {
     this._assertions.push({ field, fn });
+    return this;
+  }
+
+  /**
+   * Validate this scene's native value against a Standard Schema before user
+   * assertions run. Overrides any schema declared on the agent.
+   */
+  expectSchema(schema: StandardSchemaV1): this {
+    this._schema = schema;
     return this;
   }
 
@@ -54,12 +83,13 @@ export class SceneBuilder {
       turns: this._turns,
       runs: this._runs,
       suite: this._suite,
+      schema: this._schema,
     };
   }
 }
 
-export class AgentContext {
-  private _scenes: SceneBuilder[] = [];
+export class AgentContext<T = string> {
+  private _scenes: SceneBuilder<T>[] = [];
   private _currentSuite?: string;
 
   private _beforeAllHooks: HookFn[] = [];
@@ -67,7 +97,11 @@ export class AgentContext {
   private _beforeEachHooks: HookFn[] = [];
   private _afterEachHooks: HookFn[] = [];
 
-  constructor(private _executor: AgentExecutor, private _name?: string) {}
+  constructor(
+    private _executor: AgentExecutor<T>,
+    private _name?: string,
+    private _schema?: StandardSchemaV1,
+  ) {}
 
   registerHook(type: "beforeAll" | "afterAll" | "beforeEach" | "afterEach", fn: HookFn): void {
     this[`_${type}Hooks`].push(fn);
@@ -81,8 +115,8 @@ export class AgentContext {
     this._currentSuite = undefined;
   }
 
-  registerScene(prompt: string): SceneBuilder {
-    const builder = new SceneBuilder(prompt);
+  registerScene(prompt: string): SceneBuilder<T> {
+    const builder = new SceneBuilder<T>(prompt);
     if (this._currentSuite) {
       builder._setSuite(this._currentSuite);
     }
@@ -90,11 +124,21 @@ export class AgentContext {
     return builder;
   }
 
-  async execute(): Promise<AgentReport> {
+  async execute(): Promise<AgentReport<T>> {
+    // `--full` flows in via the CLI runner (AGEST_FULL env) or directly on argv
+    // when a test file is run standalone (`tsx foo.test.ts --full`). Default is
+    // lean output: per-scene results only, no waterfall, no full report dump.
+    const full = process.env.AGEST_FULL === "1" || process.argv.includes("--full");
     const config = await loadConfig();
+    setPricingOverrides(config.pricing);
     const parallelism = Math.max(1, config.parallelism ?? 1);
-    const definitions = this._scenes.map((s) => s.toDefinition());
-    const orderedResults: SceneResult[] = new Array(definitions.length);
+    const definitions = this._scenes.map((s) => {
+      const def = s.toDefinition();
+      // Agent-level schema is the default; a scene-level schema wins.
+      if (!def.schema && this._schema) def.schema = this._schema;
+      return def;
+    });
+    const orderedResults: SceneResult<T>[] = new Array(definitions.length);
     const total = definitions.length;
 
     // Group scenes by suite for organized output
@@ -151,7 +195,20 @@ export class AgentContext {
         logger.info(`${indent}       ${c.dim("significance:")} ${sigColor(`${(sig * 100).toFixed(1)}%`)} ${c.dim(`(pass rate: ${((result.passRate ?? 0) * 100).toFixed(1)}%)`)}`);
       }
 
-      logger.debug(`${indent}       response: ${result.response.text?.slice(0, 120)}`);
+      if (full && result.events && result.events.length > 0) {
+        const costLabel = result.costUsd != null
+          ? ` ${c.dim("·")} ${c.green(`$${Number(result.costUsd.toFixed(4))}`)}`
+          : "";
+        const tokLabel = result.tokens
+          ? ` ${c.dim(`(${result.tokens.input}→${result.tokens.output} tok)`)}`
+          : "";
+        logger.info(`${indent}       ${c.dim("waterfall:")}${tokLabel}${costLabel}`);
+        for (const line of renderTerminalWaterfall(result.events, { indent: `${indent}       ` })) {
+          logger.info(line);
+        }
+      }
+
+      logger.debug(`${indent}       response: ${resolveText(result.response).slice(0, 120)}`);
     };
 
     if (hasSuites) {
@@ -207,30 +264,28 @@ export class AgentContext {
           )
         : 0;
 
-    const tokensAvailable = results.some(
-      (r) => r.response.metadata?.tokens != null
-    );
+    const sceneTokens = results
+      .map((r) => r.tokens ?? r.response.metadata?.tokens)
+      .filter((t): t is { input: number; output: number } => t != null);
 
     let averageInputTokensPerCase: number | undefined;
     let averageOutputTokensPerCase: number | undefined;
+    let totalInputTokens: number | undefined;
+    let totalOutputTokens: number | undefined;
 
-    if (tokensAvailable) {
-      const withTokens = results.filter(
-        (r) => r.response.metadata?.tokens != null
-      );
-      averageInputTokensPerCase = Math.round(
-        withTokens.reduce(
-          (sum, r) => sum + (r.response.metadata!.tokens!.input ?? 0),
-          0
-        ) / withTokens.length
-      );
-      averageOutputTokensPerCase = Math.round(
-        withTokens.reduce(
-          (sum, r) => sum + (r.response.metadata!.tokens!.output ?? 0),
-          0
-        ) / withTokens.length
-      );
+    if (sceneTokens.length > 0) {
+      totalInputTokens = sceneTokens.reduce((s, t) => s + (t.input ?? 0), 0);
+      totalOutputTokens = sceneTokens.reduce((s, t) => s + (t.output ?? 0), 0);
+      averageInputTokensPerCase = Math.round(totalInputTokens / sceneTokens.length);
+      averageOutputTokensPerCase = Math.round(totalOutputTokens / sceneTokens.length);
     }
+
+    const sceneCosts = results
+      .map((r) => r.costUsd)
+      .filter((c): c is number => typeof c === "number");
+    const totalCostUsd = sceneCosts.length > 0
+      ? sceneCosts.reduce((s, c) => s + c, 0)
+      : undefined;
 
     const firstMeta = results.find((r) => r.response.metadata)?.response
       .metadata;
@@ -241,7 +296,7 @@ export class AgentContext {
     if (firstMeta?.tools?.length) dimensions.tools = [...firstMeta.tools].sort().join(",");
     else dimensions.tools = "none";
 
-    const report: AgentReport = {
+    const report: AgentReport<T> = {
       name: this._name,
       model: firstMeta?.model,
       systemPromptHash: firstMeta?.systemPrompt
@@ -260,6 +315,9 @@ export class AgentContext {
       totalCases: results.length,
       averageInputTokensPerCase,
       averageOutputTokensPerCase,
+      totalInputTokens,
+      totalOutputTokens,
+      totalCostUsd,
       results,
     };
 
@@ -268,10 +326,44 @@ export class AgentContext {
     }
 
     const formatted = formatReport(report);
-    logger.info(formatted);
+
+    // Default mode prints a one-line summary; `--full` dumps the whole report.
+    if (full) {
+      logger.info(formatted);
+    } else {
+      const passed = results.filter((r) => r.passed).length;
+      const rateColor = successRate >= 0.95 ? c.green : successRate >= 0.5 ? c.yellow : c.red;
+      const costSummary = totalCostUsd != null ? ` ${c.dim("·")} ${c.green(`$${Number(totalCostUsd.toFixed(4))}`)}` : "";
+      logger.info(
+        `${rateColor(`${passed}/${results.length} passed`)} ${c.dim(`(${(successRate * 100).toFixed(0)}%)`)} ${c.dim("·")} ${c.dim(`${Math.round(totalDuration)}ms`)}${costSummary}`,
+      );
+    }
 
     const filepath = await writeReport(formatted, report.timestamp, report.name, report.dimensions);
-    logger.info(`\n${c.dim("Report saved to:")} ${c.cyan(filepath)}`);
+    logger.info(`${c.dim("Report saved to:")} ${c.cyan(filepath)}${full ? "" : c.dim(" (run with --full to print it)")}`);
+
+    // When launched by `agest run`, append a record so the parent can print a
+    // cross-file aggregate footer. Best-effort: never let it break a run.
+    const summaryFile = process.env.AGEST_SUMMARY_FILE;
+    if (summaryFile) {
+      const passed = results.filter((r) => r.passed).length;
+      try {
+        appendFileSync(
+          summaryFile,
+          JSON.stringify({
+            file: process.argv[1],
+            name: this._name,
+            total: results.length,
+            passed,
+            failed: results.length - passed,
+            duration: Math.round(totalDuration),
+            costUsd: totalCostUsd ?? null,
+          }) + "\n",
+        );
+      } catch {
+        /* ignore */
+      }
+    }
 
     return report;
   }
@@ -287,13 +379,16 @@ export function hashPromptOnly(prompt: string): string {
 }
 
 
-let currentContext: AgentContext | null = null;
+// The active context is a runtime singleton holding an executor of arbitrary
+// value type, so `any` is the honest type for the holder. The generic flows
+// through `agent()` → `AgentContext<T>` → the report at the call site.
+let currentContext: AgentContext<any> | null = null;
 
-export function setContext(ctx: AgentContext | null): void {
+export function setContext(ctx: AgentContext<any> | null): void {
   currentContext = ctx;
 }
 
-export function getContext(): AgentContext {
+export function getContext(): AgentContext<any> {
   if (!currentContext) {
     throw new Error("scene() must be called inside an agent() callback");
   }

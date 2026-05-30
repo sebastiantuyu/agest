@@ -1,9 +1,10 @@
 import { access, mkdir, writeFile } from "fs/promises";
 import { createHash } from "crypto";
 import { join } from "path";
-import type { AgentReport } from "./types";
+import type { AgentReport, SceneResult, TimelineEvent } from "./types";
+import { resolveText } from "./resolve";
 
-export function formatReport(report: AgentReport): string {
+export function formatReport(report: AgentReport<unknown>): string {
   const lines: string[] = ["agent:"];
 
   if (report.name) lines.push(`    name: "${report.name}"`);
@@ -38,8 +39,9 @@ export function formatReport(report: AgentReport): string {
         lines.push(`          reason: "${reason}"`);
       }
       const result = report.results.find((r) => r.prompt === c);
-      if (result?.response.text) {
-        const escaped = result.response.text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+      const responseText = result ? resolveText(result.response) : "";
+      if (responseText) {
+        const escaped = responseText.replace(/"/g, '\\"').replace(/\n/g, '\\n');
         lines.push(`          response: "${escaped}"`);
       }
     }
@@ -66,8 +68,9 @@ export function formatReport(report: AgentReport): string {
           if (r.error) {
             lines.push(`                reason: "${r.error}"`);
           }
-          if (r.response.text) {
-            const escaped = r.response.text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+          const responseText = resolveText(r.response);
+          if (responseText) {
+            const escaped = responseText.replace(/"/g, '\\"').replace(/\n/g, '\\n');
             lines.push(`                response: "${escaped}"`);
           }
         }
@@ -106,7 +109,84 @@ export function formatReport(report: AgentReport): string {
     );
   }
 
+  if (report.totalInputTokens != null) {
+    lines.push(`    total_input_tokens: ${report.totalInputTokens}`);
+  }
+  if (report.totalOutputTokens != null) {
+    lines.push(`    total_output_tokens: ${report.totalOutputTokens}`);
+  }
+  if (report.totalCostUsd != null) {
+    lines.push(`    total_cost_usd: ${formatUsd(report.totalCostUsd)}`);
+  }
+
+  const observedScenes = report.results.filter(
+    (r) => r.tokens || r.costUsd != null || (r.events && r.events.length),
+  );
+  if (observedScenes.length > 0) {
+    lines.push(`    scenes:`);
+    for (const r of observedScenes) {
+      lines.push(...renderSceneObservability(r));
+    }
+  }
+
   return lines.join("\n");
+}
+
+function renderSceneObservability(r: SceneResult<unknown>): string[] {
+  const out: string[] = [];
+  const promptLabel = r.prompt.length > 80 ? r.prompt.slice(0, 77) + "..." : r.prompt;
+  out.push(`        - prompt: "${escapeYaml(promptLabel)}"`);
+  out.push(`          duration_ms: ${Math.round(r.duration)}`);
+  if (r.tokens) {
+    out.push(`          tokens: { input: ${r.tokens.input}, output: ${r.tokens.output} }`);
+  }
+  if (r.costUsd != null) {
+    const source = r.costSource ?? "table";
+    out.push(`          cost_usd: ${formatUsd(r.costUsd)}`);
+    out.push(`          cost_source: ${source}`);
+  }
+  if (r.events && r.events.length) {
+    out.push(`          timeline:`);
+    for (const e of r.events) {
+      out.push(...renderTimelineEvent(e));
+    }
+  }
+  return out;
+}
+
+function renderTimelineEvent(e: TimelineEvent): string[] {
+  const out: string[] = [];
+  out.push(`              - kind: ${e.kind}`);
+  out.push(`                name: "${escapeYaml(e.name)}"`);
+  out.push(`                start_ms: ${Math.round(e.startMs)}`);
+  out.push(`                duration_ms: ${Math.round(e.durationMs)}`);
+  if (e.tokens) {
+    out.push(`                tokens: { input: ${e.tokens.input}, output: ${e.tokens.output} }`);
+  }
+  if (e.cachedInputTokens != null && e.cachedInputTokens > 0) {
+    out.push(`                cached_input_tokens: ${e.cachedInputTokens}`);
+  }
+  if (e.cost?.totalUsd != null) {
+    out.push(`                cost_usd: ${formatUsd(e.cost.totalUsd)}`);
+    out.push(`                cost_source: ${e.cost.source}`);
+  }
+  if (e.runIndex != null) {
+    out.push(`                run_index: ${e.runIndex}`);
+  }
+  if (e.error) {
+    out.push(`                error: "${escapeYaml(e.error)}"`);
+  }
+  return out;
+}
+
+function formatUsd(n: number): string {
+  if (n === 0) return "0";
+  // Up to 6 decimal places, but trim trailing zeros for compactness
+  return Number(n.toFixed(6)).toString();
+}
+
+function escapeYaml(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
 export async function writeReport(

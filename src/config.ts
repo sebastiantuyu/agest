@@ -19,6 +19,12 @@ export interface AgestConfig {
   turns?: number;
   runs?: number;
   judge?: JudgeConfig;
+  /**
+   * Per-model pricing override (USD per 1M tokens). Merged on top of the
+   * built-in `src/pricing/models.json` table. Provide entries for any model
+   * you use that isn't already in the table, or to override a default.
+   */
+  pricing?: Record<string, { input: number; output: number }>;
 }
 
 export function defineConfig(config: AgestConfig): AgestConfig {

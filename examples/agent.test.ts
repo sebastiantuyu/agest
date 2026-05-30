@@ -45,6 +45,6 @@ agent(languageAgent, () => {
   scene("How do you say 'hello' in French?")
     .expect("response", (response) => {
       expect(response).toBe.notRefusal();
-      expect(response).toBe.containing("language");
+      expect(response).toBe.containingText("language");
     });
 });

@@ -1,20 +1,46 @@
-import type { AgentExecutor, AgentResponse, JudgeResult, RunResult, SceneDefinition, SceneResult } from "./types";
+import type {
+  AgentExecutor,
+  AgentResponse,
+  CostSource,
+  JudgeResult,
+  RunResult,
+  SceneDefinition,
+  SceneResult,
+  TimelineEvent,
+} from "./types";
 import type { JudgeConfig } from "./config";
 import { collectPendingJudgements } from "./assertions";
 import { callJudge, resolveJudgeExecutor } from "./judge";
+import { resolveValue, resolveText, serializeValue, navigatePath } from "./resolve";
+import { validateAgainstSchema } from "./schema";
 
 const DEFAULT_SCENE_TIMEOUT = 10_000;
 
-export function extractField(response: AgentResponse, field: string): unknown {
+/**
+ * Extract a named field from an agent response for assertion.
+ * - "response" / "value" → the native structured value (deterministic matchers)
+ * - "text"               → the serialized/judge view (lazy; text matchers)
+ * - "metadata"/"refusal" → the corresponding response property
+ * - dot-path             → navigated into the structured value first
+ *                          (e.g. "plan_items.0.options"), falling back to
+ *                          metadata so existing metadata paths keep resolving.
+ */
+export function extractField<T>(response: AgentResponse<T>, field: string): unknown {
   switch (field) {
     case "response":
-      return response.text;
+    case "value":
+      return resolveValue(response);
+    case "text":
+      return resolveText(response);
     case "metadata":
       return response.metadata;
     case "refusal":
       return response.refusal;
-    default:
-      return response.metadata?.[field];
+    default: {
+      const fromValue = navigatePath(resolveValue(response), field);
+      if (fromValue !== undefined) return fromValue;
+      return navigatePath(response.metadata ?? {}, field);
+    }
   }
 }
 
@@ -35,14 +61,17 @@ function wilsonSignificance(passes: number, total: number): number {
   return Math.max(0, Math.min(1, lower));
 }
 
-async function executeSingleRun(
-  executor: AgentExecutor,
+async function executeSingleRun<T>(
+  executor: AgentExecutor<T>,
   scene: SceneDefinition,
   timeoutMs: number,
   turns: number,
   judgeConfig?: JudgeConfig,
-): Promise<RunResult> {
-  let response: AgentResponse = { text: "" };
+): Promise<RunResult<T>> {
+  // The empty sentinel uses the `text` branch of the union so it is a valid
+  // AgentResponse<T> for ANY T (there is no native value yet — the executor
+  // hasn't run). Using `{ value: "" }` would wrongly assume T = string.
+  let response: AgentResponse<T> = { text: "" };
   let duration: number;
 
   try {
@@ -81,7 +110,21 @@ async function executeSingleRun(
   let error: string | undefined;
   let judgement: JudgeResult | undefined;
 
+  // Schema validation runs first — a structural failure is the headline. Skip
+  // refusals (which legitimately won't match the output shape) and empty values.
+  if (scene.schema && !response.refusal) {
+    const value = resolveValue(response);
+    if (value !== undefined) {
+      const outcome = await validateAgainstSchema(scene.schema, value);
+      if (!outcome.ok) {
+        passed = false;
+        error = `Schema validation failed — ${outcome.message}`;
+      }
+    }
+  }
+
   for (const assertion of scene.assertions) {
+    if (!passed) break;
     try {
       const value = extractField(response, assertion.field);
       assertion.fn(value);
@@ -102,7 +145,9 @@ async function executeSingleRun(
       const judgeExecutor = resolveJudgeExecutor(judgeConfig);
       for (const p of pending) {
         try {
-          const result = await callJudge(String(p.value), p.criteria, judgeExecutor);
+          // Hand the judge the serialized text view — NOT String(value),
+          // which would render a structured value as "[object Object]".
+          const result = await callJudge(serializeValue(p.value), p.criteria, judgeExecutor);
           judgement = result;
           if (result.verdict === "fail" || result.verdict === "partial") {
             passed = false;
@@ -121,14 +166,14 @@ async function executeSingleRun(
   return { passed, error, response, duration, judgement };
 }
 
-export async function executeScene(
-  executor: AgentExecutor,
+export async function executeScene<T = string>(
+  executor: AgentExecutor<T>,
   scene: SceneDefinition,
   globalTimeout?: number,
   judgeConfig?: JudgeConfig,
   globalTurns?: number,
   globalRuns?: number,
-): Promise<SceneResult> {
+): Promise<SceneResult<T>> {
   const timeoutMs = scene.timeout ?? globalTimeout ?? DEFAULT_SCENE_TIMEOUT;
   const turns = scene.turns ?? globalTurns ?? 1;
   const numRuns = scene.runs ?? globalRuns ?? 1;
@@ -136,6 +181,9 @@ export async function executeScene(
   // Single run — original fast path
   if (numRuns <= 1) {
     const run = await executeSingleRun(executor, scene, timeoutMs, turns, judgeConfig);
+    const tokens = run.response.metadata?.tokens;
+    const cost = run.response.metadata?.cost;
+    const events = run.response.metadata?.events;
     return {
       prompt: scene.prompt,
       response: run.response,
@@ -144,11 +192,15 @@ export async function executeScene(
       error: run.error,
       judgement: run.judgement,
       suite: scene.suite,
+      tokens: tokens ? { input: tokens.input, output: tokens.output } : undefined,
+      costUsd: cost?.totalUsd,
+      costSource: cost?.source,
+      events: events && events.length ? events : undefined,
     };
   }
 
   // Multiple runs — execute N times and aggregate
-  const runs: RunResult[] = [];
+  const runs: RunResult<T>[] = [];
   for (let i = 0; i < numRuns; i++) {
     runs.push(await executeSingleRun(executor, scene, timeoutMs, turns, judgeConfig));
   }
@@ -167,6 +219,38 @@ export async function executeScene(
     ? undefined
     : failedRuns[0]?.error ?? "Majority of runs failed";
 
+  // Aggregate tokens, cost, events across runs
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let hasTokens = false;
+  let costTotal = 0;
+  let hasCost = false;
+  let costSource: CostSource | undefined;
+  const allEvents: TimelineEvent[] = [];
+
+  runs.forEach((r, runIndex) => {
+    const meta = r.response.metadata;
+    if (meta?.tokens) {
+      hasTokens = true;
+      inputTokens += meta.tokens.input;
+      outputTokens += meta.tokens.output;
+    }
+    if (meta?.cost?.totalUsd != null) {
+      hasCost = true;
+      costTotal += meta.cost.totalUsd;
+      // Promote weakest source: provider > table > unavailable
+      if (costSource !== "table") costSource = meta.cost.source;
+      if (meta.cost.source === "table" && costSource !== "table") {
+        costSource = "table";
+      }
+    }
+    if (meta?.events?.length) {
+      for (const e of meta.events) {
+        allEvents.push({ ...e, runIndex });
+      }
+    }
+  });
+
   return {
     prompt: scene.prompt,
     response: lastRun.response,
@@ -178,5 +262,9 @@ export async function executeScene(
     runs,
     passRate,
     statisticalSignificance,
+    tokens: hasTokens ? { input: inputTokens, output: outputTokens } : undefined,
+    costUsd: hasCost ? costTotal : undefined,
+    costSource,
+    events: allEvents.length ? allEvents : undefined,
   };
 }

@@ -47,7 +47,7 @@ agent(mockAgent, () => {
   suite("Helpfulness", () => {
     scene("Tell me about TypeScript")
       .expect("response", (response) => {
-        expect(response).toBe.containing("TypeScript");
+        expect(response).toBe.containingText("TypeScript");
       });
 
     scene("What is Node.js?")
@@ -74,7 +74,7 @@ agent(mockAgent, () => {
       .runs(5)
       .expect("response", (response) => {
         expect(response).toBe.notRefusal();
-        expect(response).toBe.containing("async");
+        expect(response).toBe.containingText("async");
       });
   });
 });
