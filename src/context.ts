@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { appendFileSync } from "node:fs";
 import type {
   AgentExecutor,
   AgentReport,
@@ -340,6 +341,29 @@ export class AgentContext<T = string> {
 
     const filepath = await writeReport(formatted, report.timestamp, report.name, report.dimensions);
     logger.info(`${c.dim("Report saved to:")} ${c.cyan(filepath)}${full ? "" : c.dim(" (run with --full to print it)")}`);
+
+    // When launched by `agest run`, append a record so the parent can print a
+    // cross-file aggregate footer. Best-effort: never let it break a run.
+    const summaryFile = process.env.AGEST_SUMMARY_FILE;
+    if (summaryFile) {
+      const passed = results.filter((r) => r.passed).length;
+      try {
+        appendFileSync(
+          summaryFile,
+          JSON.stringify({
+            file: process.argv[1],
+            name: this._name,
+            total: results.length,
+            passed,
+            failed: results.length - passed,
+            duration: Math.round(totalDuration),
+            costUsd: totalCostUsd ?? null,
+          }) + "\n",
+        );
+      } catch {
+        /* ignore */
+      }
+    }
 
     return report;
   }

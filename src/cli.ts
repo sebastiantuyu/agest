@@ -2,10 +2,28 @@
 
 import { spawn } from "child_process";
 import { fileURLToPath } from "node:url";
-import { realpathSync } from "node:fs";
+import { realpathSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
 import { main as stats } from "./stats.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
+import { c } from "./logger.js";
+
+/**
+ * One record per `agent()` run, appended by the child process (see
+ * AgentContext.execute → AGEST_SUMMARY_FILE). The parent reads them all back to
+ * print a vitest-style footer across files.
+ */
+interface RunSummaryRecord {
+  file: string;
+  name?: string;
+  total: number;
+  passed: number;
+  failed: number;
+  duration: number;
+  costUsd: number | null;
+}
 
 export interface ParsedRunArgs {
   pattern?: string;
@@ -59,22 +77,129 @@ async function run(args: string[]) {
     process.exit(1);
   }
 
+  // Each child appends a summary record here; the parent reads them back for
+  // the aggregate footer. A unique dir keeps concurrent `agest run`s isolated.
+  const summaryFile = join(mkdtempSync(join(tmpdir(), "agest-")), "summary.jsonl");
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    AGEST_SUMMARY_FILE: summaryFile,
+    // The test file renders its own output in a child process; propagate
+    // --full so it emits the waterfall + full report rather than lean results.
+    ...(full ? { AGEST_FULL: "1" } : {}),
+  };
+
+  let anyChildCrashed = false;
+  // Run every file (vitest-style) instead of bailing on the first failure, so
+  // the footer reflects the whole run. Exit non-zero at the end if any failed.
   for (const file of files) {
     const child = spawn("npx", ["tsx", file], {
       stdio: "inherit",
       shell: true,
-      // The test file renders its own output in a child process; propagate the
-      // --full flag through the environment so it knows to emit the waterfall
-      // and full report rather than just per-scene results.
-      env: full ? { ...process.env, AGEST_FULL: "1" } : process.env,
+      env: childEnv,
     });
 
     const code = await new Promise<number>((resolve) =>
       child.on("close", (c) => resolve(c ?? 1))
     );
 
-    if (code !== 0) process.exit(code);
+    // A non-zero code means the file itself threw/crashed. Failing scenes do
+    // NOT surface here — the child resolves cleanly — so failure is read back
+    // from the summary records below.
+    if (code !== 0) anyChildCrashed = true;
   }
+
+  const records = readSummary(summaryFile);
+  printRunSummary(records, files.length);
+  try {
+    rmSync(dirname(summaryFile), { recursive: true, force: true });
+  } catch {
+    /* best-effort cleanup */
+  }
+
+  const casesFailed = records.reduce((sum, r) => sum + r.failed, 0);
+  if (anyChildCrashed || casesFailed > 0) process.exit(1);
+}
+
+function readSummary(summaryFile: string): RunSummaryRecord[] {
+  try {
+    return readFileSync(summaryFile, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as RunSummaryRecord);
+  } catch {
+    return []; // no children wrote results (older lib, or all crashed early)
+  }
+}
+
+export interface RunSummary {
+  /** Whether the footer should print — false for a single scene in one file. */
+  show: boolean;
+  discoveredFiles: number;
+  filesPassed: number;
+  filesFailed: number;
+  totalCases: number;
+  casesPassed: number;
+  casesFailed: number;
+  duration: number;
+  cost: number;
+}
+
+/**
+ * Aggregate every child's records into the footer totals. The footer only
+ * shows when more than one case ran (multiple files, or one file with multiple
+ * scenes) — a single scene already prints its own one-line summary. A file
+ * counts as failed if any of its agent() runs had a failing case, or if it
+ * never wrote a record (crashed before reporting).
+ */
+export function aggregateRunSummary(
+  records: RunSummaryRecord[],
+  discoveredFiles: number,
+): RunSummary {
+  const totalCases = records.reduce((sum, r) => sum + r.total, 0);
+
+  const failsByFile = new Map<string, number>();
+  for (const r of records) {
+    failsByFile.set(r.file, (failsByFile.get(r.file) ?? 0) + r.failed);
+  }
+  const missing = Math.max(0, discoveredFiles - failsByFile.size);
+  const filesFailed = [...failsByFile.values()].filter((f) => f > 0).length + missing;
+
+  const casesPassed = records.reduce((sum, r) => sum + r.passed, 0);
+
+  return {
+    show: records.length > 0 && (discoveredFiles > 1 || totalCases > 1),
+    discoveredFiles,
+    filesPassed: discoveredFiles - filesFailed,
+    filesFailed,
+    totalCases,
+    casesPassed,
+    casesFailed: totalCases - casesPassed,
+    duration: records.reduce((sum, r) => sum + (r.duration || 0), 0),
+    cost: records.reduce((sum, r) => sum + (r.costUsd ?? 0), 0),
+  };
+}
+
+/**
+ * Print the vitest-style footer. Delegates the math to aggregateRunSummary and
+ * only renders when that says so.
+ */
+function printRunSummary(records: RunSummaryRecord[], discoveredFiles: number) {
+  const s = aggregateRunSummary(records, discoveredFiles);
+  if (!s.show) return;
+
+  const tally = (failed: number, passed: number, total: number) =>
+    failed > 0
+      ? `${c.red(`${failed} failed`)} ${c.dim("|")} ${c.green(`${passed} passed`)} ${c.dim(`(${total})`)}`
+      : `${c.green(`${passed} passed`)} ${c.dim(`(${total})`)}`;
+
+  const line = (label: string, value: string) =>
+    console.log(`${c.dim(label.padStart(11))}  ${value}`);
+
+  console.log("");
+  line("Test Files", tally(s.filesFailed, s.filesPassed, s.discoveredFiles));
+  line("Tests", tally(s.casesFailed, s.casesPassed, s.totalCases));
+  line("Duration", `${s.duration}ms`);
+  if (s.cost > 0) line("Cost", c.green(`$${Number(s.cost.toFixed(4))}`));
 }
 
 function printUsage() {
