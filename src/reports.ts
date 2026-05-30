@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { readdir, readFile } from "fs/promises";
-import { join } from "path";
+import { join, relative } from "path";
+import type { CheckpointRecord } from "./types";
 
 export interface ParsedSuiteResult {
   name: string;
@@ -553,18 +554,166 @@ export function groupByDimension(
 }
 
 /**
+ * Wilson score interval bounds at 95% confidence for an observed rate `p` over
+ * `total` trials. The single source of truth for Wilson math — both the
+ * lower-bound helper and the runner's per-scene significance delegate here.
+ */
+function wilsonBounds(p: number, total: number): { low: number; high: number } {
+  if (total === 0) return { low: 0, high: 0 };
+  const z = 1.96;
+  const denominator = 1 + (z * z) / total;
+  const centre = p + (z * z) / (2 * total);
+  const spread = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * total)) / total);
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  return {
+    low: clamp((centre - spread) / denominator),
+    high: clamp((centre + spread) / denominator),
+  };
+}
+
+/** Wilson interval from a pass count over a trial count. */
+export function wilsonInterval(passes: number, total: number): { low: number; high: number } {
+  return wilsonBounds(total === 0 ? 0 : passes / total, total);
+}
+
+/**
  * Wilson score interval lower bound at 95% confidence.
  * Gives a conservative success rate estimate that accounts for sample size.
  */
 export function wilsonLowerBound(successRate: number, totalCases: number): number {
-  if (totalCases === 0) return 0;
-  const z = 1.96;
-  const p = successRate;
-  const denominator = 1 + (z * z) / totalCases;
-  const centre = p + (z * z) / (2 * totalCases);
-  const spread = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * totalCases)) / totalCases);
-  const lower = (centre - spread) / denominator;
-  return Math.max(0, Math.min(1, lower));
+  return wilsonBounds(successRate, totalCases).low;
+}
+
+// ---------------------------------------------------------------------------
+// Checkpoint log (canonical run store: .reports/checkpoints.jsonl)
+// ---------------------------------------------------------------------------
+
+/** Walk for `.reports/checkpoints.jsonl` files, depth-limited like findReports. */
+export async function findCheckpointFiles(dir: string, depth = 0): Promise<string[]> {
+  if (depth > 6) return [];
+  const SKIP = new Set(["node_modules", "dist", ".git", ".pnpm"]);
+  const out: string[] = [];
+
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (SKIP.has(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === ".reports") {
+        const files = await readdir(full);
+        if (files.includes("checkpoints.jsonl")) {
+          out.push(join(full, "checkpoints.jsonl"));
+        }
+      } else if (!entry.name.startsWith(".")) {
+        out.push(...(await findCheckpointFiles(full, depth + 1)));
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Read every checkpoint record from the log(s) under `cwd`. Malformed lines
+ * (e.g. a crash mid-append) are skipped defensively rather than failing the
+ * whole read.
+ */
+export async function readCheckpoints(cwd: string): Promise<CheckpointRecord[]> {
+  const files = await findCheckpointFiles(cwd);
+  const all: CheckpointRecord[] = [];
+  for (const f of files) {
+    let content: string;
+    try {
+      content = await readFile(f, "utf-8");
+    } catch {
+      continue;
+    }
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        all.push(JSON.parse(trimmed) as CheckpointRecord);
+      } catch {
+        /* skip malformed line */
+      }
+    }
+  }
+  return all;
+}
+
+/**
+ * Adapt a checkpoint record to the ParsedReport shape the stats/preview
+ * renderers consume. When the record references a `--record` snapshot, the
+ * per-scene detail (scenes / suites / failed cases) is loaded lazily from it;
+ * otherwise the lightweight (record-only) view is returned.
+ */
+export async function checkpointToReport(rec: CheckpointRecord): Promise<ParsedReport> {
+  let scenes: ParsedScene[] | undefined;
+  let suites: ParsedSuiteResult[] | undefined;
+  let failedCases: ParsedReport["failedCases"] = [];
+
+  if (rec.recordPath) {
+    try {
+      const content = await readFile(join(process.cwd(), rec.recordPath), "utf-8");
+      const snap = parseReport(content, rec.recordPath);
+      scenes = snap.scenes;
+      suites = snap.suites;
+      failedCases = snap.failedCases;
+    } catch {
+      /* snapshot missing — fall back to the lightweight view */
+    }
+  }
+
+  return {
+    name: rec.agentName,
+    systemPromptHash: rec.systemPromptHash,
+    promptHash: rec.dimensions?.prompt,
+    dimensions: rec.dimensions,
+    tools: rec.tools,
+    model: rec.dimensions?.model ?? rec.model ?? "unknown",
+    successRate: rec.successRate,
+    totalCases: rec.totalCases,
+    failedCasesCount: Math.max(0, rec.totalCases - rec.casesPassed),
+    failedCases,
+    duration: rec.durationMs,
+    timestamp: rec.timestamp,
+    averageInputTokensPerCase: rec.avgInputTokensPerCase,
+    averageOutputTokensPerCase: rec.avgOutputTokensPerCase,
+    totalInputTokens: rec.totalInputTokens,
+    totalOutputTokens: rec.totalOutputTokens,
+    totalCostUsd: rec.costUsd ?? undefined,
+    scenes,
+    suites,
+    source: rec.recordPath ?? rec.runId,
+  };
+}
+
+/**
+ * Load all runs as ParsedReports: the canonical checkpoint log (primary) plus
+ * any legacy `report-*.yaml` still on disk (backward compat). Snapshots under
+ * `.reports/runs/` are NOT scanned directly — they are reached via a record's
+ * recordPath, so they never double-count.
+ */
+export async function loadReports(cwd: string): Promise<ParsedReport[]> {
+  const records = await readCheckpoints(cwd);
+  const fromCheckpoints = await Promise.all(records.map((r) => checkpointToReport(r)));
+
+  const legacyFiles = await findReports(cwd);
+  const legacy = await Promise.all(
+    legacyFiles.map(async (f) => {
+      const content = await readFile(f, "utf-8");
+      const r = parseReport(content, relative(cwd, f));
+      await ensureDimensions(r);
+      return r;
+    }),
+  );
+
+  return [...fromCheckpoints, ...legacy];
 }
 
 export function formatDuration(ms: number): string {

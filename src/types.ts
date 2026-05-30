@@ -138,10 +138,48 @@ export interface AgentReport<T = string> {
   timestamp: string;
   duration: number;
   totalCases: number;
+  /** Cases that passed (totalCases - failures). Persisted for statistical honesty. */
+  casesPassed?: number;
+  /** Configured runs per scene (sampling count) — affects the trial basis below. */
+  runsPerScene?: number;
+  /** Wilson score interval (95%) across all trials = Σ scene runs. */
+  wilsonLow?: number;
+  wilsonHigh?: number;
   averageInputTokensPerCase?: number;
   averageOutputTokensPerCase?: number;
   totalInputTokens?: number;
   totalOutputTokens?: number;
   totalCostUsd?: number;
   results: SceneResult<T>[];
+}
+
+/**
+ * One append-only line in `.reports/checkpoints.jsonl` — the canonical run log.
+ * Lightweight (cost + identity + stats), written on every run. Structured fields
+ * (`dimensions`, `tools`) stay native; adding a field later needs no migration.
+ */
+export interface CheckpointRecord {
+  runId: string;
+  sweepId?: string;
+  timestamp: string;
+  agentName?: string;
+  model?: string;
+  systemPromptHash?: string;
+  tools?: string[];
+  /** Config identity map: { suiteHash, model, prompt, tools, judge, runs }. */
+  dimensions: Record<string, string>;
+  runsPerScene?: number;
+  totalCases: number;
+  casesPassed: number;
+  successRate: number;
+  wilsonLow?: number;
+  wilsonHigh?: number;
+  durationMs: number;
+  costUsd?: number | null;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  avgInputTokensPerCase?: number;
+  avgOutputTokensPerCase?: number;
+  /** Relative path to the full YAML snapshot, set only when run with --record. */
+  recordPath?: string;
 }

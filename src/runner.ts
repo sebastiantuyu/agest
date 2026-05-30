@@ -13,6 +13,7 @@ import { collectPendingJudgements } from "./assertions";
 import { callJudge, resolveJudgeExecutor } from "./judge";
 import { resolveValue, resolveText, serializeValue, navigatePath } from "./resolve";
 import { validateAgainstSchema } from "./schema";
+import { wilsonInterval } from "./reports";
 
 const DEFAULT_SCENE_TIMEOUT = 10_000;
 
@@ -42,23 +43,6 @@ export function extractField<T>(response: AgentResponse<T>, field: string): unkn
       return navigatePath(response.metadata ?? {}, field);
     }
   }
-}
-
-/**
- * Compute Wilson score interval lower bound.
- * Measures confidence that the true pass rate is above 50% (random chance).
- * z = 1.96 for 95% confidence level.
- */
-function wilsonSignificance(passes: number, total: number): number {
-  if (total === 0) return 0;
-  const z = 1.96;
-  const p = passes / total;
-  const denominator = 1 + (z * z) / total;
-  const centre = p + (z * z) / (2 * total);
-  const spread = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * total)) / total);
-  const lower = (centre - spread) / denominator;
-  // Return the lower bound clamped to [0, 1]
-  return Math.max(0, Math.min(1, lower));
 }
 
 async function executeSingleRun<T>(
@@ -208,7 +192,7 @@ export async function executeScene<T = string>(
   const passes = runs.filter((r) => r.passed).length;
   const passRate = passes / runs.length;
   const totalDuration = runs.reduce((sum, r) => sum + r.duration, 0);
-  const statisticalSignificance = wilsonSignificance(passes, runs.length);
+  const statisticalSignificance = wilsonInterval(passes, runs.length).low;
 
   // Use the last run's response as representative
   const lastRun = runs[runs.length - 1];

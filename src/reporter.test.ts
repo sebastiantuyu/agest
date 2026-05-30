@@ -4,20 +4,25 @@ import type { AgentReport } from "./types";
 vi.mock("fs/promises", () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
+  appendFile: vi.fn().mockResolvedValue(undefined),
   access: vi.fn().mockRejectedValue(new Error("ENOENT")),
 }));
 
-import { formatReport, writeReport, writeDiffEntry } from "./reporter";
-import { mkdir, writeFile, access } from "fs/promises";
+import { join } from "path";
+import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter";
+import type { CheckpointRecord } from "./types";
+import { mkdir, writeFile, appendFile, access } from "fs/promises";
 
 const mockedMkdir = vi.mocked(mkdir);
 const mockedWriteFile = vi.mocked(writeFile);
+const mockedAppendFile = vi.mocked(appendFile);
 const mockedAccess = vi.mocked(access);
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockedMkdir.mockResolvedValue(undefined);
   mockedWriteFile.mockResolvedValue(undefined);
+  mockedAppendFile.mockResolvedValue(undefined);
   mockedAccess.mockRejectedValue(new Error("ENOENT"));
   vi.spyOn(process, "cwd").mockReturnValue("/project");
 });
@@ -127,63 +132,72 @@ describe("formatReport", () => {
   });
 });
 
-describe("writeReport", () => {
-  it("creates .reports/ directory with recursive: true", async () => {
-    await writeReport("content", "2024-01-01T00:00:00.000Z");
+describe("writeSnapshot", () => {
+  it("creates .reports/runs/ directory with recursive: true", async () => {
+    await writeSnapshot("content", "sweep-abcd1234");
+    expect(mockedMkdir).toHaveBeenCalledWith(
+      expect.stringContaining(join(".reports", "runs")),
+      { recursive: true }
+    );
+  });
+
+  it("writes content to a runId-named file (never clobbers)", async () => {
+    await writeSnapshot("content", "sweep-abcd1234");
+    expect(mockedWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining(join("runs", "sweep-abcd1234.yaml")),
+      "content",
+      "utf-8"
+    );
+  });
+
+  it("returns the snapshot filepath", async () => {
+    const path = await writeSnapshot("c", "local-deadbeef");
+    expect(path).toContain(join(".reports", "runs", "local-deadbeef.yaml"));
+  });
+
+  it("does not warn — unique runIds mean no overwrite", async () => {
+    mockedAccess.mockResolvedValue(undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await writeSnapshot("c", "local-deadbeef");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("appendCheckpoint", () => {
+  const record: CheckpointRecord = {
+    runId: "local-deadbeef",
+    timestamp: "2024-01-01T00:00:00.000Z",
+    dimensions: { model: "gpt-4", suiteHash: "abc123" },
+    totalCases: 3,
+    casesPassed: 2,
+    successRate: 0.67,
+    durationMs: 1200,
+  };
+
+  it("creates the .reports/ directory", async () => {
+    await appendCheckpoint(record);
     expect(mockedMkdir).toHaveBeenCalledWith(
       expect.stringContaining(".reports"),
       { recursive: true }
     );
   });
 
-  it("writes content to file", async () => {
-    await writeReport("content", "2024-01-01T00:00:00.000Z");
-    expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining(".reports"),
-      "content",
+  it("appends one JSON line to checkpoints.jsonl", async () => {
+    await appendCheckpoint(record);
+    expect(mockedAppendFile).toHaveBeenCalledWith(
+      expect.stringContaining(join(".reports", "checkpoints.jsonl")),
+      JSON.stringify(record) + "\n",
       "utf-8"
     );
   });
 
-  it("generates filename from timestamp when no dimensions", async () => {
-    const path = await writeReport("c", "2024-01-01T00:00:00.000Z");
-    expect(path).toContain("report-2024-01-01T00-00-00-000Z.yaml");
-  });
-
-  it("generates filename with dimension hash when dimensions present", async () => {
-    const path = await writeReport("c", "2024-01-01", "agent", { model: "gpt-4" });
-    expect(path).toMatch(/report-agent-[a-f0-9]+\.yaml$/);
-  });
-
-  it("includes name in filename", async () => {
-    const path = await writeReport("c", "2024-01-01T00:00:00.000Z", "my-agent");
-    expect(path).toContain("report-my-agent-");
-  });
-
-  it("sanitizes name for filename", async () => {
-    const path = await writeReport("c", "2024-01-01T00:00:00.000Z", "my agent!");
-    expect(path).toContain("report-my_agent_-");
-  });
-
-  it("warns when file already exists", async () => {
-    mockedAccess.mockResolvedValue(undefined);
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await writeReport("c", "2024-01-01T00:00:00.000Z", "test");
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it("does not warn when file is new", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await writeReport("c", "2024-01-01T00:00:00.000Z", "test");
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it("returns the filepath written", async () => {
-    const path = await writeReport("c", "2024-01-01T00:00:00.000Z");
-    expect(path).toContain(".reports/report-");
-    expect(path).toContain(".yaml");
+  it("writes a single trailing-newline-terminated line", async () => {
+    await appendCheckpoint(record);
+    const written = mockedAppendFile.mock.calls[0][1] as string;
+    expect(written.endsWith("\n")).toBe(true);
+    expect(written.trimEnd().split("\n")).toHaveLength(1);
+    expect(JSON.parse(written.trimEnd())).toEqual(record);
   });
 });
 
