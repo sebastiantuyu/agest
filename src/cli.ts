@@ -94,12 +94,20 @@ async function run(args: string[]) {
     ...process.env,
     AGEST_SUMMARY_FILE: summaryFile,
     AGEST_SWEEP_ID: sweepId,
+    // Lets each child know it's part of a multi-file sweep so it can drop its
+    // own "Running N scene…" header (the parent prints one below instead).
+    AGEST_FILE_COUNT: String(files.length),
     // The test file renders its own output in a child process; propagate
     // --full so it emits the waterfall + full report rather than lean results.
     ...(full ? { AGEST_FULL: "1" } : {}),
     // Opt-in: persist a full per-scene YAML snapshot per agent() execution.
     ...(record ? { AGEST_RECORD: "1" } : {}),
   };
+
+  // One run header for the whole sweep — children suppress their per-file one.
+  if (files.length > 1) {
+    console.log(c.bold(`\nRunning ${files.length} test files...`));
+  }
 
   let anyChildCrashed = false;
   // Run every file (vitest-style) instead of bailing on the first failure, so

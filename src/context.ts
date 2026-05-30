@@ -149,7 +149,21 @@ export class AgentContext<T = string> {
     const hasSuites = suiteNames.length > 0;
     const suiteCount = hasSuites ? ` (${suiteNames.length} suite${suiteNames.length !== 1 ? "s" : ""})` : "";
 
-    logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}${suiteCount}${parallelism > 1 ? c.dim(` (parallelism: ${parallelism})`) : ""}...\n`));
+    // In a multi-file sweep the parent (`agest run`) prints one run header, so
+    // the per-file "Running N scene…" line is just repeated noise. Suppress it
+    // here and print a single blank line to separate this file's block from the
+    // previous one. Suite-less blocks still need an identity marker so their
+    // scenes aren't orphaned under the prior file — print a compact one.
+    const inSweep = Number(process.env.AGEST_FILE_COUNT ?? "1") > 1;
+    if (!inSweep) {
+      logger.info(c.bold(`\nRunning ${total} scene${total !== 1 ? "s" : ""}${suiteCount}${parallelism > 1 ? c.dim(` (parallelism: ${parallelism})`) : ""}...\n`));
+    } else {
+      logger.info("");
+      if (!hasSuites) {
+        const id = this._name ?? relative(process.cwd(), process.argv[1] ?? "");
+        if (id) logger.info(`  ${c.bold(c.cyan(`▸ ${id}`))} ${c.dim(`(${total} scene${total !== 1 ? "s" : ""})`)}`);
+      }
+    }
 
     // Run beforeAll hooks
     for (const hook of this._beforeAllHooks) {
