@@ -2,28 +2,63 @@
 
 [![Build Status](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml/badge.svg)](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml)
 
-A quantitative testing library for agents using a Jest-like syntax. 
-Batteries included.
+A quantitative testing library for AI agents using a Jest-like syntax. Batteries included.
 
-Main purpose is to provide helpful benchmarks with minimum API for quick iteration and evaluation of
-different system prompts, models and tools considering their impact on the agent's performance.
+Agest benchmarks **system prompts, models, and tools** by running test scenarios
+("scenes") against a real agent and scoring the results — with token usage, USD
+cost, latency waterfalls, statistical significance, and a run history you can
+diff over time. The goal is the smallest possible API for fast iteration on
+agent quality.
 
+## What you can do
 
-## Basic usage
+- **Assert on agent output** — refusals, substrings/regex, deep-structural
+  equality, partial subsets, array membership, schema conformance, custom
+  predicates, or an LLM-as-judge for fuzzy qualities.
+- **Test structured agents** — assert on the native value (objects stay
+  objects), dot-path into it, or auto-validate every scene against a
+  [Standard Schema](https://standardschema.dev) (zod 4, valibot, arktype).
+- **Run a test CLI** — `agest run` discovers files/dirs/globs, runs scenes in
+  parallel, and prints a vitest-style summary across files.
+- **Measure cost & latency** — per-scene token counts, USD cost (provider-
+  reported or from a built-in pricing table), and a model/tool timeline
+  waterfall.
+- **Score statistically** — `.runs(n)` repeats a scene and reports a pass rate
+  with a Wilson 95% confidence interval.
+- **Compare over time** — every run appends to a checkpoint log; `agest stats`
+  charts success rate, tokens, duration, and attributes changes to the
+  dimension (model / prompt / tools) that moved them.
+- **Plug in any agent** — first-class adapters for LangChain / LangGraph and
+  remote HTTP endpoints, plus a tracing helper for fully custom executors.
 
-A language-learning assistant that should refuse off-topic questions, tested with a real LLM via OpenRouter.
+## Install
+
+```sh
+npm i -D @sebastiantuyu/agest
+# or: pnpm add -D @sebastiantuyu/agest
+```
+
+The LangChain adapter is an optional peer dependency — install `@langchain/core`
+(and your model packages) only if you use it.
+
+## Quick start
+
+A language-learning assistant that should refuse off-topic questions, tested
+against a real LLM through the LangChain adapter:
 
 ```typescript
+// language-assistant.agest.ts
 import "dotenv/config";
 import { agent, scene, expect } from "@sebastiantuyu/agest";
+import { langchain } from "@sebastiantuyu/agest/adapters";
 import { createAgent } from "langchain";
 
 const reactAgent = createAgent({
-    model: "openai/gpt-4.1-mini",
-    systemPrompt: "You are a language learning assistant. Refuse all off-topic questions.",
-})
+  model: "openai/gpt-4.1-mini",
+  systemPrompt: "You are a language learning assistant. Refuse all off-topic questions.",
+});
 
-await agent(reactAgent, () => {
+await agent(langchain(reactAgent), () => {
   scene("What is the weather like today?")
     .expect("response", (response) => {
       expect(response).toBe.refusal();
@@ -36,13 +71,23 @@ await agent(reactAgent, () => {
 });
 ```
 
+Run it with the CLI (discovers `**/*.agest.ts` by default):
+
+```sh
+npx agest run language-assistant.agest.ts
+```
+
 This produces a scored report:
 
 ```
-agent: 
+agent:
     model: "openai/gpt-4.1-mini"
     system_prompt: <check_sum>
     tools: []
+    dimensions:
+        model: "openai/gpt-4.1-mini"
+        tools: "none"
+        suiteHash: "258a5b30e197"
     success_rate: 1
     failed_cases:
         (none)
@@ -51,6 +96,103 @@ agent:
     total_cases: 2
     average_input_tokens_per_case: 87
     average_output_tokens_per_case: 34
+    total_cost_usd: 0.0019
+```
+
+> A test file also runs standalone — `npx tsx language-assistant.agest.ts` — because
+> `agent()` auto-executes. Use `agest run` when you want file discovery, a
+> cross-file summary, and the persisted run history.
+
+## Running tests with the CLI
+
+The `agest` binary takes file paths, directories (walked recursively for the
+pattern), or glob strings:
+
+```sh
+agest run tests/                          # walks tests/ for **/*.agest.ts
+agest run src/evals --pattern "**/*.test.ts"
+agest run "tests/**/*.agest.ts" path/to/one.agest.ts
+agest run tests/ --full                   # also print the timeline waterfall + full YAML report
+agest run tests/ --record                 # also save a full per-scene YAML snapshot
+```
+
+Each file runs in its own process; scenes within a file run with the
+configured `parallelism`. When more than one file is discovered, Agest prints a
+single run header and a vitest-style footer aggregating files, cases, duration,
+and cost:
+
+```
+Running 3 test files...
+
+  ▸ refusals (2 scenes)
+    [1/2] What is the weather like today? ... PASS (1203ms)
+    [2/2] How do you say 'good morning'?   ... PASS (980ms)
+2/2 passed (100%) · 2183ms · $0.0019
+
+  ...
+
+  Test Files  3 passed (3)
+       Tests  8 passed (8)
+    Duration  19204ms
+        Cost  $0.0241
+```
+
+## Adapters
+
+Adapters turn a framework's agent into the `(input) => AgentResponse` executor
+Agest runs. Import them from `@sebastiantuyu/agest/adapters`.
+
+### LangChain / LangGraph
+
+`langchain()` accepts `createAgent(...)`, a `createReactAgent(...)` graph, or a
+simple `prompt.pipe(model)` chain. It auto-extracts the model name, tool names,
+and system prompt, and traces the run to capture token usage, USD cost, and a
+model/tool timeline — no manual wiring:
+
+```typescript
+import { langchain } from "@sebastiantuyu/agest/adapters";
+
+await agent(langchain(reactAgent), () => {
+  scene("Do you have the Cotton T-Shirt in XL?")
+    .expect("response", (r) => expect(r).toBe.containingText("XL"));
+});
+```
+
+### Remote HTTP endpoints
+
+`remote()` tests any agent behind an HTTP endpoint. Since the endpoint is a
+black box, supply static metadata (model, tools, system prompt) and, if needed,
+custom request/response shaping:
+
+```typescript
+import { remote } from "@sebastiantuyu/agest/adapters";
+
+const executor = remote("https://my-agent.example.com/chat", {
+  headers: { Authorization: "Bearer sk-..." },
+  metadata: { model: "gpt-4o", tools: ["search", "calculator"] },
+  buildRequest: (input) => ({ message: input }),       // default: { prompt: input }
+  parseResponse: (body) => ({ text: body.reply }),     // default: tries common shapes
+});
+```
+
+### Custom executors
+
+For an agent not covered by an adapter, return an `AgentResponse` directly. To
+surface the cost/latency waterfall, use the `createTrace` helper and spread its
+`collect()` into the metadata:
+
+```typescript
+import { agent, scene, expect, createTrace } from "@sebastiantuyu/agest";
+
+const myExecutor = async (input: string) => {
+  const trace = await createTrace({ model: "openai/gpt-4.1-mini" });
+  const result = await runMyAgent(input, { callbacks: trace.callbacks });
+  return {
+    value: result.payload,                              // native value (objects stay objects)
+    text: result.summary,                               // optional view for the judge / text matchers
+    metadata: { model: "openai/gpt-4.1-mini", ...trace.collect() },
+  };
+};
 ```
 
 ## Assertions
@@ -118,7 +260,7 @@ scene("Plan a trip to Tokyo")
 | Matcher | Asserts |
 | --- | --- |
 | `satisfying(predicate, message?)` | a deterministic predicate over the value holds (use for any negative not covered above) |
-| `judgedBy({ criteria, failWhen })` | an LLM judge resolves the criteria (fuzzy + paid) |
+| `judgedBy({ criteria, failWhen, context? })` | an LLM judge resolves the criteria (fuzzy + paid) |
 
 ```typescript
 expect(items).toBe.ofLength(3);
@@ -126,6 +268,11 @@ expect(results).toBe.containingItem({ id: 7, status: "ok" });   // exact element
 expect(plan).toBe.containingSubset({ user: { id: 1 } });        // partial, nested
 expect(response).toBe.notContainingText("api_key");             // leak guard
 expect(score).toBe.satisfying((s) => s >= 0.8, "score too low");
+
+expect(response).toBe.judgedBy({
+  criteria: "The response approves the applicant and confirms they meet the criteria.",
+  failWhen: "The response denies eligibility or fails to confirm approval.",
+});
 ```
 
 > Use `containingItem` for exact array membership and `containingSubset` for
@@ -210,7 +357,86 @@ natural to express deterministically: use `satisfying((v) => !v.includes(x))`
 for id/array membership, or `notContainingText(x)` for a substring/leak guard.
 Reach for `judgedBy` only once the deterministic facts are covered.
 
-Generate a very interesting report with multiple runs!:
+## Scene & suite modifiers
+
+```typescript
+agent(executor, () => {
+  // Group related scenes — each suite is scored independently in the report.
+  suite("Guardrails", () => {
+    scene("What's the weather?").expect("response", (r) => expect(r).toBe.refusal());
+  });
+
+  suite("Helpfulness", () => {
+    scene("Explain async/await")
+      .turns(3)        // multi-turn: feed the prompt back up to n times
+      .runs(5)         // repeat the scene 5x → pass rate + Wilson significance
+      .timeout(35_000) // per-scene timeout (ms)
+      .expect("response", (r) => expect(r).toBe.containingText("async"));
+  });
+});
+```
+
+Lifecycle hooks run around scenes and accept sync or async functions:
+`beforeAll`, `afterAll`, `beforeEach`, `afterEach`. Pass `{ name }` as the last
+`agent()` argument to label a run — named agents are grouped across runs in the
+stats view.
+
+## Configuration
+
+Drop an `agest.config.ts` (or `.js`) in your project root:
+
+```typescript
+import { defineConfig } from "@sebastiantuyu/agest";
+
+export default defineConfig({
+  parallelism: 4,        // scenes run concurrently within a file
+  timeout: 35_000,       // default per-scene timeout (ms)
+  turns: 3,              // default multi-turn count
+  runs: 1,               // default repeats per scene
+  judge: {
+    model: "openai/gpt-oss-120b",   // OpenAI-compatible; defaults to OpenRouter
+    // apiKey, baseUrl, or a fully custom `executor` are also supported
+  },
+  pricing: {             // override / extend the built-in USD-per-1M-tokens table
+    "my-org/custom-model": { input: 0.5, output: 1.5 },
+  },
+});
+```
+
+Scene-level settings (`.timeout()`, `.turns()`, `.runs()`) override the config
+defaults.
+
+## Cost & observability
+
+Every run captures, per scene and aggregated:
+
+- **Token usage** — input/output counts.
+- **USD cost** — provider-reported cost wins; otherwise it's computed from a
+  built-in pricing table (`pricing` config extends or overrides it); otherwise
+  marked unavailable.
+- **Timeline waterfall** — ordered model and tool events with durations, shown
+  with `agest run --full`:
+
+```
+  ▸ demo-suite (1 scene)
+    [1/1] hello ... PASS (812ms)
+           waterfall: (120→40 tok) · $0.0012
+           model mock/model-1     ████████████████████████████   800ms  $0.0012
+           tool  search                  ██████████████           400ms
+```
+
+`--full` also prints the complete YAML report (per-scene tokens, cost, timeline)
+instead of the one-line summary. `--record` additionally writes a full per-scene
+YAML snapshot under `.reports/`.
+
+## History & comparison
+
+Every run appends a lightweight record to `.reports/checkpoints.jsonl` (the
+canonical, append-only run log) keyed by a `suiteHash` plus the model / prompt /
+tools / judge / runs **dimensions**. `agest stats` reads the history and charts
+it — success rate, suite breakdown, token usage, duration — and, for named
+agents with multiple runs, attributes pass-rate changes to the dimension that
+moved them:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -254,26 +480,49 @@ Generate a very interesting report with multiple runs!:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-## Running the real example
+```sh
+agest stats                          # full comparison across history
+agest stats --model anthropic/claude-haiku-4-5
+agest stats --agent customer-support
+agest stats --suite 258a5b30e197     # filter to one suite's history
+agest stats --export-csv [path]      # flatten the run log to CSV
+agest stats --purge                  # remove all .reports/ and .diff/ data
 
-Copy `.env.example` to `.env` and add your [OpenRouter](https://openrouter.ai) API key:
+agest preview                        # generate an HTML report preview
+```
+
+## Examples
+
+The `examples/` directory has runnable suites — a basic mock agent, schema-typed
+agents, and full benchmarks under `examples/agents/` (customer support across 5
+models, loan eligibility with an LLM judge, a research agent with web search, a
+remote HTTP agent, and a prompt-evolution comparison).
+
+Copy `.env.example` to `.env` and add your [OpenRouter](https://openrouter.ai)
+API key, then run any of them:
 
 ```sh
 cp .env.example .env
 # edit .env and set OPENROUTER_API_KEY
-npx tsx examples/openrouter.test.ts
-```
 
+pnpm dev                                       # examples/basic.test.ts (mock, no key needed)
+npx tsx examples/agents/customer-support/agent.test.ts
+agest stats                                    # compare the runs you just produced
+```
 
 ## Roadmap
 
 ### Shipped
+- [x] Test runner CLI: `agest run` with file/dir/glob discovery, parallelism, and a cross-file summary
+- [x] Cost tracking: per-scene USD cost (provider-reported or from a built-in pricing table, with config overrides)
+- [x] Latency waterfall: model/tool timeline per scene via `--full`
+- [x] Append-only checkpoint run log + `agest stats` with dimension-aware evolution, attribution, and CSV export
+- [x] HTML report preview: `agest preview`
 - [x] Multi-turn support: `.turns(n)` per scene
 - [x] LLM-as-judge: `.judgedBy({ criteria, failWhen })`
-- [x] Remote HTTP adapter for framework-agnostic testing
-- [x] Report persistence to `.reports/` with YAML format
-- [x] Stats CLI with multi-model comparison and dimension analysis
-- [x] Lifecycle hooks: `beforeEach`, `beforeAll`, `afterEach`, `afterAll` supporting sync/async functions
+- [x] Adapters: LangChain / LangGraph and remote HTTP, plus `createTrace` for custom executors
+- [x] Report persistence to `.reports/` with YAML format and optional `--record` snapshots
+- [x] Lifecycle hooks: `beforeEach`, `beforeAll`, `afterEach`, `afterAll` (sync/async)
 - [x] Multiple test suites per agent via `suite()` to evaluate different aspects independently
 - [x] Statistical runs: `.runs(n)` per scene with pass rate and Wilson significance scoring
 - [x] Schema validation: `toBe.matchingSchema(schema)`, `scene().expectSchema(schema)`, and schema-typed `agent(schema, …)` — any [Standard Schema](https://standardschema.dev) (zod 4, valibot, arktype)
@@ -284,7 +533,6 @@ npx tsx examples/openrouter.test.ts
 - [ ] Snapshot regression: diff current run against a saved baseline
 
 ### Planned
-- [ ] Cost estimation per scene (token count to dollar cost)
 - [ ] CI/CD reporter (GitHub Actions PR comments)
 - [ ] Tool-call trajectory assertions
 - [ ] Watch mode for TDD-style iteration
