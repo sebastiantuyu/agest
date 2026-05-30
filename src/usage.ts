@@ -112,7 +112,7 @@ export function aggregateUsage(
     row.runs += 1;
     byModel.set(m, row);
 
-    const dayKey = rec.timestamp.slice(0, 10);
+    const dayKey = localDayKey(ts);
     const day = byDay.get(dayKey) ?? { day: dayKey, inTokens: 0, outTokens: 0, cost: 0, models: {} };
     day.inTokens += inTok;
     day.outTokens += outTok;
@@ -192,16 +192,33 @@ function formatDayLabel(dayKey: string): string {
   return `${MONTHS[(mo - 1) % 12]} ${d}`;
 }
 
-function dayKeyOf(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
+/**
+ * Local calendar day for a timestamp. Checkpoints are stored UTC
+ * (`new Date().toISOString()`); we bucket by the *local* day so the chart lines
+ * up with the user's clock — a run at 23:00 UTC-3 lands on that local day, not
+ * the next UTC one.
+ */
+function localDayKey(ms: number): string {
+  const d = new Date(ms);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
-/** Inclusive list of YYYY-MM-DD from start to end (capped to avoid runaway). */
+/**
+ * Inclusive list of local YYYY-MM-DD from start to end. Steps by calendar day
+ * via setDate (not +DAY_MS) so DST 23h/25h days don't skip or duplicate a day.
+ */
 function enumerateDays(startKey: string, endKey: string): string[] {
   const out: string[] = [];
-  let t = Date.parse(`${startKey}T00:00:00Z`);
-  const end = Date.parse(`${endKey}T00:00:00Z`);
-  for (let i = 0; t <= end && i < 4000; i++, t += DAY_MS) out.push(dayKeyOf(t));
+  const [sy, sm, sd] = startKey.split("-").map(Number);
+  const [ey, em, ed] = endKey.split("-").map(Number);
+  const cur = new Date(sy, sm - 1, sd); // local midnight
+  const end = new Date(ey, em - 1, ed).getTime();
+  for (let i = 0; cur.getTime() <= end && i < 4000; i++) {
+    out.push(localDayKey(cur.getTime()));
+    cur.setDate(cur.getDate() + 1);
+  }
   return out;
 }
 
@@ -223,11 +240,16 @@ interface Column {
  */
 function buildColumns(s: UsageSummary, now: number, modelOrder: string[]): Column[] {
   const byDay = new Map(s.days.map((d) => [d.day, d]));
-  const endKey = dayKeyOf(now);
-  const startKey =
+  const earliest = s.days[0]?.day; // s.days is chronological
+  const endKey = localDayKey(now);
+  // For a fixed window, span the whole window (so sparse data still shows ~N
+  // columns) but never start later than the earliest in-window day, so no
+  // bucketed data falls off the left edge.
+  const calStart =
     s.window === "all"
-      ? (s.days[0]?.day ?? endKey)
-      : dayKeyOf(now - (WINDOW_DAYS[s.window] - 1) * DAY_MS);
+      ? (earliest ?? endKey)
+      : localDayKey(now - (WINDOW_DAYS[s.window] - 1) * DAY_MS);
+  const startKey = earliest && earliest < calStart ? earliest : calStart;
   const axis = enumerateDays(startKey, endKey);
 
   const termCols = process.stdout.columns ?? 80;
@@ -268,7 +290,12 @@ function renderAxisLabels(cols: Column[], gutter: number): string {
   const place = (idx: number, preferStart: number) => {
     const label = formatDayLabel(cols[idx].label);
     const start = Math.max(0, Math.min(preferStart, n - label.length));
-    for (let k = 0; k < label.length; k++) if (line[start + k] !== " ") return;
+    // Treat out-of-range cells (undefined) as free — a label may overflow a
+    // very narrow axis; only a defined non-space cell counts as a collision.
+    for (let k = 0; k < label.length; k++) {
+      const cell = line[start + k];
+      if (cell !== undefined && cell !== " ") return;
+    }
     for (let k = 0; k < label.length; k++) line[start + k] = label[k];
   };
 
@@ -404,7 +431,7 @@ async function main(args: string[]): Promise<void> {
     ({ values } = parseArgs({
       args,
       options: {
-        window: { type: "string", default: "30d" },
+        window: { type: "string", default: "7d" },
         metric: { type: "string", default: "tokens" },
         model: { type: "string" },
       },

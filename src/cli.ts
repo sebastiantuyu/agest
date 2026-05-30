@@ -283,7 +283,7 @@ const COMMANDS: Command[] = [
     name: "usage",
     summary: "Show token/cost usage over time",
     usage: [
-      `agest usage                            # last 30 days, by tokens`,
+      `agest usage                            # last 7 days, by tokens`,
       `agest usage --metric cost              # chart + breakdown by cost`,
       `agest usage --window 7d|30d|all        # pick the time window`,
       `agest usage --model <model>            # filter to one model`,

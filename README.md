@@ -488,7 +488,7 @@ agest stats --suite 258a5b30e197     # filter to one suite's history
 agest stats --export-csv [path]      # flatten the run log to CSV
 agest stats --purge                  # remove all .reports/ and .diff/ data
 
-agest usage                          # token/cost usage over time (last 30 days)
+agest usage                          # token/cost usage over time (last 7 days)
 agest usage --metric cost            # chart + per-model breakdown by cost
 agest usage --window 7d|30d|all      # pick the time window
 agest usage --model anthropic/claude-haiku-4-5
