@@ -1,13 +1,12 @@
-import { readdir, readFile, rm } from "fs/promises";
+import { readdir, writeFile, rm } from "fs/promises";
 import { join, relative } from "path";
 import {
   type ParsedReport,
-  parseReport,
-  findReports,
+  loadReports,
+  readCheckpoints,
   loadDiffEntry,
   computeDiff,
   formatDuration,
-  ensureDimensions,
   findVaryingDimensions,
   groupByDimension,
   findControlledPairs,
@@ -248,12 +247,51 @@ async function purge(cwd: string) {
 // Main
 // ---------------------------------------------------------------------------
 
+/** Quote a CSV cell per RFC-4180 when it contains a comma, quote, or newline. */
+function csvCell(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Flatten the JSONL run log to a CSV projection on demand — the only place CSV
+ * escaping lives. For spreadsheet/eyeball use; the JSONL log stays canonical.
+ */
+async function exportCsv(cwd: string, outPath: string) {
+  const records = await readCheckpoints(cwd);
+  if (records.length === 0) {
+    console.log("\n  No checkpoints to export. Run some agent tests first.\n");
+    return;
+  }
+  const header = [
+    "runId", "sweepId", "timestamp", "agentName", "suiteHash", "model", "promptHash",
+    "tools", "judge", "runs", "runsPerScene", "totalCases", "casesPassed", "successRate",
+    "wilsonLow", "wilsonHigh", "durationMs", "costUsd", "totalInputTokens",
+    "totalOutputTokens", "recordPath",
+  ];
+  const rows = records.map((r) =>
+    [
+      r.runId, r.sweepId, r.timestamp, r.agentName,
+      r.dimensions?.suiteHash, r.dimensions?.model, r.dimensions?.prompt,
+      Array.isArray(r.tools) ? r.tools.join("|") : r.dimensions?.tools,
+      r.dimensions?.judge, r.dimensions?.runs, r.runsPerScene, r.totalCases,
+      r.casesPassed, r.successRate, r.wilsonLow, r.wilsonHigh, r.durationMs,
+      r.costUsd, r.totalInputTokens, r.totalOutputTokens, r.recordPath,
+    ].map(csvCell).join(","),
+  );
+  const csv = [header.join(","), ...rows].join("\n") + "\n";
+  await writeFile(join(cwd, outPath), csv, "utf-8");
+  console.log(`\n  Exported ${records.length} checkpoint${records.length !== 1 ? "s" : ""} to ${outPath}\n`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const agentFlagIdx = args.indexOf("--agent");
   const agentFilter = agentFlagIdx !== -1 ? args[agentFlagIdx + 1] : undefined;
   const modelFlagIdx = args.indexOf("--model");
   const modelFilter = modelFlagIdx !== -1 ? args[modelFlagIdx + 1] : undefined;
+  const suiteFlagIdx = args.indexOf("--suite");
+  const suiteFilter = suiteFlagIdx !== -1 ? args[suiteFlagIdx + 1] : undefined;
 
   if (args.includes("--purge")) {
     await purge(process.cwd());
@@ -261,22 +299,29 @@ async function main() {
   }
 
   const cwd = process.cwd();
-  const files = await findReports(cwd);
 
-  if (files.length === 0) {
+  const csvFlagIdx = args.indexOf("--export-csv");
+  if (csvFlagIdx !== -1) {
+    const next = args[csvFlagIdx + 1];
+    const outPath = next && !next.startsWith("--") ? next : "agest-checkpoints.csv";
+    await exportCsv(cwd, outPath);
+    return;
+  }
+
+  let reports: ParsedReport[] = await loadReports(cwd);
+
+  if (reports.length === 0) {
     console.log("\n  No reports found. Run some agent tests first.\n");
     return;
   }
 
-  let reports: ParsedReport[] = await Promise.all(
-    files.map(async (f) => {
-      const content = await readFile(f, "utf-8");
-      return parseReport(content, relative(cwd, f));
-    })
-  );
-
-  // Ensure all reports have dimensions (backward compat)
-  await Promise.all(reports.map((r) => ensureDimensions(r)));
+  if (suiteFilter) {
+    reports = reports.filter((r) => r.dimensions?.suiteHash === suiteFilter);
+    if (reports.length === 0) {
+      console.log(`\n  No reports found for suite "${suiteFilter}".\n`);
+      return;
+    }
+  }
 
   if (agentFilter) {
     reports = reports.filter(

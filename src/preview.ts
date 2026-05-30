@@ -1,18 +1,16 @@
-import { readFile, writeFile } from "fs/promises";
-import { join, relative } from "path";
+import { writeFile } from "fs/promises";
+import { join } from "path";
 import os from "os";
 import { exec } from "child_process";
 import {
   type ParsedReport,
   type ControlledComparison,
   type DiffEntry,
-  parseReport,
-  findReports,
+  loadReports,
   loadDiffEntry,
   wilsonLowerBound,
   computeDiff,
   formatDuration,
-  ensureDimensions,
   findVaryingDimensions,
   groupByDimension,
   findControlledPairs,
@@ -1498,22 +1496,12 @@ function generateHTML(groups: AgentGroup[], totalReports: number): string {
 
 async function main() {
   const cwd = process.cwd();
-  const files = await findReports(cwd);
+  const reports = await loadReports(cwd);
 
-  if (files.length === 0) {
+  if (reports.length === 0) {
     console.log("\n  No reports found. Run some agent tests first.\n");
     return;
   }
-
-  const reports = await Promise.all(
-    files.map(async (f) => {
-      const content = await readFile(f, "utf-8");
-      return parseReport(content, relative(cwd, f));
-    })
-  );
-
-  // Ensure all reports have dimensions (backward compat)
-  await Promise.all(reports.map((r) => ensureDimensions(r)));
 
   // Group by agent name, sort each group oldest -> newest
   const groupMap = new Map<string, ParsedReport[]>();

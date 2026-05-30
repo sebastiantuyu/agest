@@ -15,7 +15,8 @@ vi.mock("./runner", () => ({
 
 vi.mock("./reporter", () => ({
   formatReport: vi.fn().mockReturnValue("formatted"),
-  writeReport: vi.fn().mockResolvedValue("/path/report.yaml"),
+  writeSnapshot: vi.fn().mockResolvedValue("/project/.reports/runs/run.yaml"),
+  appendCheckpoint: vi.fn().mockResolvedValue(undefined),
   writeDiffEntry: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -35,11 +36,11 @@ vi.mock("./logger", () => ({
 import { SceneBuilder, AgentContext, setContext, getContext, hashPromptOnly } from "./context";
 import { loadConfig } from "./config";
 import { executeScene } from "./runner";
-import { formatReport, writeReport, writeDiffEntry } from "./reporter";
+import { formatReport, appendCheckpoint, writeDiffEntry } from "./reporter";
 
 const mockedLoadConfig = vi.mocked(loadConfig);
 const mockedExecuteScene = vi.mocked(executeScene);
-const mockedWriteReport = vi.mocked(writeReport);
+const mockedAppendCheckpoint = vi.mocked(appendCheckpoint);
 const mockedWriteDiffEntry = vi.mocked(writeDiffEntry);
 
 beforeEach(() => {
@@ -51,7 +52,8 @@ beforeEach(() => {
     duration: 100,
     passed: true,
   });
-  mockedWriteReport.mockResolvedValue("/path/report.yaml");
+  delete process.env.AGEST_SUMMARY_FILE;
+  delete process.env.AGEST_RECORD;
   setContext(null);
 });
 
@@ -264,11 +266,14 @@ describe("AgentContext", () => {
       expect(mockedWriteDiffEntry).toHaveBeenCalled();
     });
 
-    it("calls writeReport and returns the report", async () => {
+    it("appends a checkpoint (standalone) and returns the report", async () => {
       const ctx = new AgentContext(vi.fn(), "test-agent");
       ctx.registerScene("p");
       const report = await ctx.execute();
-      expect(mockedWriteReport).toHaveBeenCalled();
+      expect(mockedAppendCheckpoint).toHaveBeenCalled();
+      const checkpoint = mockedAppendCheckpoint.mock.calls[0][0];
+      expect(checkpoint.agentName).toBe("test-agent");
+      expect(checkpoint.dimensions.suiteHash).toMatch(/^[a-f0-9]{12}$/);
       expect(report.name).toBe("test-agent");
       expect(report.totalCases).toBe(1);
     });

@@ -1,7 +1,6 @@
-import { access, mkdir, writeFile } from "fs/promises";
-import { createHash } from "crypto";
+import { access, appendFile, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import type { AgentReport, SceneResult, TimelineEvent } from "./types";
+import type { AgentReport, CheckpointRecord, SceneResult, TimelineEvent } from "./types";
 import { resolveText } from "./resolve";
 
 export function formatReport(report: AgentReport<unknown>): string {
@@ -189,36 +188,28 @@ function escapeYaml(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
-export async function writeReport(
-  content: string,
-  timestamp: string,
-  name?: string,
-  dimensions?: Record<string, string>
-): Promise<string> {
-  const reportsDir = join(process.cwd(), ".reports");
-  await mkdir(reportsDir, { recursive: true });
-
-  const safename = name ? `-${name.replace(/[^a-zA-Z0-9_-]/g, "_")}` : "";
-  let filename: string;
-
-  if (dimensions && Object.keys(dimensions).length > 0) {
-    const sorted = Object.entries(dimensions).sort(([a], [b]) => a.localeCompare(b));
-    const dimHash = createHash("sha256").update(JSON.stringify(sorted)).digest("hex").slice(0, 8);
-    filename = `report${safename}-${dimHash}.yaml`;
-  } else {
-    const safestamp = timestamp.replace(/[:.]/g, "-");
-    filename = `report${safename}-${safestamp}.yaml`;
-  }
-
-  const filepath = join(reportsDir, filename);
-
-  try {
-    await access(filepath);
-    console.warn(`\x1b[33m⚠ Overwriting previous report for ${name ?? "unnamed"} (same config)\x1b[0m`);
-  } catch {}
-
+/**
+ * Write a full per-scene YAML report under `.reports/runs/<runId>.yaml`. The
+ * runId is unique per `agent()` execution, so snapshots never clobber and need
+ * no locking. Only written when a run opts in via `--record`.
+ */
+export async function writeSnapshot(content: string, runId: string): Promise<string> {
+  const runsDir = join(process.cwd(), ".reports", "runs");
+  await mkdir(runsDir, { recursive: true });
+  const filepath = join(runsDir, `${runId}.yaml`);
   await writeFile(filepath, content, "utf-8");
   return filepath;
+}
+
+/**
+ * Append one record to the canonical append-only run log
+ * (`.reports/checkpoints.jsonl`). Used on the standalone path (a lone test-file
+ * process). When launched by `agest run`, the PARENT owns this write instead.
+ */
+export async function appendCheckpoint(record: CheckpointRecord): Promise<void> {
+  const reportsDir = join(process.cwd(), ".reports");
+  await mkdir(reportsDir, { recursive: true });
+  await appendFile(join(reportsDir, "checkpoints.jsonl"), JSON.stringify(record) + "\n", "utf-8");
 }
 
 export async function writeDiffEntry(

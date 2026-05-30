@@ -1,15 +1,18 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { appendFileSync } from "node:fs";
+import { relative } from "node:path";
 import type {
   AgentExecutor,
   AgentReport,
+  CheckpointRecord,
   HookFn,
   SceneDefinition,
   SceneResult,
 } from "./types";
 import { executeScene } from "./runner";
 import { resolveText } from "./resolve";
-import { formatReport, writeReport, writeDiffEntry } from "./reporter";
+import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter";
+import { wilsonInterval } from "./reports";
 import { logger, c } from "./logger";
 import { loadConfig } from "./config";
 import { setPricingOverrides } from "./pricing";
@@ -290,11 +293,35 @@ export class AgentContext<T = string> {
     const firstMeta = results.find((r) => r.response.metadata)?.response
       .metadata;
 
+    // Config identity. suiteHash + judge + runs complete the dimension set so
+    // comparisons never silently span a changed suite or sampling config.
+    // `temperature` is read opportunistically (open metadata map) when present.
     const dimensions: Record<string, string> = {};
     if (firstMeta?.model) dimensions.model = firstMeta.model;
     if (firstMeta?.systemPrompt) dimensions.prompt = hashPromptOnly(firstMeta.systemPrompt);
     if (firstMeta?.tools?.length) dimensions.tools = [...firstMeta.tools].sort().join(",");
     else dimensions.tools = "none";
+    dimensions.suiteHash = computeSuiteHash(definitions);
+    dimensions.judge = config.judge?.model ?? "none";
+    dimensions.runs = String(config.runs ?? 1);
+    const temperature = firstMeta?.temperature;
+    if (temperature != null) dimensions.temperature = String(temperature);
+
+    // Report-level statistical honesty. The trial basis is Σ runs across every
+    // scene (a multi-run scene contributes N trials), not just case count.
+    const casesPassed = results.filter((r) => r.passed).length;
+    let trials = 0;
+    let trialPasses = 0;
+    for (const r of results) {
+      if (r.runs && r.runs.length) {
+        trials += r.runs.length;
+        trialPasses += r.runs.filter((x) => x.passed).length;
+      } else {
+        trials += 1;
+        trialPasses += r.passed ? 1 : 0;
+      }
+    }
+    const wilson = wilsonInterval(trialPasses, trials);
 
     const report: AgentReport<T> = {
       name: this._name,
@@ -313,6 +340,10 @@ export class AgentContext<T = string> {
       timestamp: new Date().toISOString(),
       duration: Math.round(totalDuration),
       totalCases: results.length,
+      casesPassed,
+      runsPerScene: config.runs ?? 1,
+      wilsonLow: wilson.low,
+      wilsonHigh: wilson.high,
       averageInputTokensPerCase,
       averageOutputTokensPerCase,
       totalInputTokens,
@@ -339,14 +370,49 @@ export class AgentContext<T = string> {
       );
     }
 
-    const filepath = await writeReport(formatted, report.timestamp, report.name, report.dimensions);
-    logger.info(`${c.dim("Report saved to:")} ${c.cyan(filepath)}${full ? "" : c.dim(" (run with --full to print it)")}`);
+    // A unique runId per agent() execution names the optional snapshot (so
+    // snapshots never clobber) and tags the checkpoint record.
+    const sweepId = process.env.AGEST_SWEEP_ID;
+    const runId = `${sweepId ?? "local"}-${randomUUID().slice(0, 8)}`;
 
-    // When launched by `agest run`, append a record so the parent can print a
-    // cross-file aggregate footer. Best-effort: never let it break a run.
+    // Heavy per-scene snapshot is opt-in via --record (AGEST_RECORD).
+    let recordPath: string | undefined;
+    if (process.env.AGEST_RECORD === "1") {
+      const snapPath = await writeSnapshot(formatted, runId);
+      recordPath = relative(process.cwd(), snapPath);
+      logger.info(`${c.dim("Snapshot saved to:")} ${c.cyan(recordPath)}`);
+    }
+
+    const checkpoint: CheckpointRecord = {
+      runId,
+      sweepId,
+      timestamp: report.timestamp,
+      agentName: this._name,
+      model: report.model,
+      systemPromptHash: report.systemPromptHash,
+      tools: report.tools,
+      dimensions,
+      runsPerScene: report.runsPerScene,
+      totalCases: report.totalCases,
+      casesPassed,
+      successRate,
+      wilsonLow: report.wilsonLow,
+      wilsonHigh: report.wilsonHigh,
+      durationMs: Math.round(totalDuration),
+      costUsd: totalCostUsd ?? null,
+      totalInputTokens,
+      totalOutputTokens,
+      avgInputTokensPerCase: averageInputTokensPerCase,
+      avgOutputTokensPerCase: averageOutputTokensPerCase,
+      recordPath,
+    };
+
+    // When launched by `agest run`, hand the record to the parent (single writer
+    // of the checkpoint log) and let it print the cross-file footer. Standalone
+    // (`tsx foo.agest.ts`), this process is the lone writer — append directly.
+    // Best-effort throughout: never let persistence break a run.
     const summaryFile = process.env.AGEST_SUMMARY_FILE;
     if (summaryFile) {
-      const passed = results.filter((r) => r.passed).length;
       try {
         appendFileSync(
           summaryFile,
@@ -354,12 +420,19 @@ export class AgentContext<T = string> {
             file: process.argv[1],
             name: this._name,
             total: results.length,
-            passed,
-            failed: results.length - passed,
+            passed: casesPassed,
+            failed: results.length - casesPassed,
             duration: Math.round(totalDuration),
             costUsd: totalCostUsd ?? null,
+            checkpoint,
           }) + "\n",
         );
+      } catch {
+        /* ignore */
+      }
+    } else {
+      try {
+        await appendCheckpoint(checkpoint);
       } catch {
         /* ignore */
       }
@@ -376,6 +449,24 @@ function hashPrompt(prompt: string, model?: string): string {
 
 export function hashPromptOnly(prompt: string): string {
   return createHash("sha256").update(prompt).digest("hex").slice(0, 12);
+}
+
+/**
+ * Identity hash of the test suite: prompts, suite names, assertion field names +
+ * bodies (`fn.toString()`), and schema presence. Makes the suite a first-class
+ * dimension so a comparison can never silently span a changed set of scenes.
+ * `fn.toString()` is formatting/closure-sensitive — it over-segments (a cosmetic
+ * edit yields a new hash) but never silently merges two different suites, which
+ * is the safe direction.
+ */
+export function computeSuiteHash(definitions: SceneDefinition[]): string {
+  const canonical = definitions.map((d) => ({
+    prompt: d.prompt,
+    suite: d.suite ?? null,
+    schema: d.schema ? "1" : "0",
+    assertions: d.assertions.map((a) => ({ field: a.field, fn: a.fn.toString() })),
+  }));
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex").slice(0, 12);
 }
 
 
