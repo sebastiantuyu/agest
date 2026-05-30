@@ -50,4 +50,16 @@ describe("parseRunArgs (via full argv)", () => {
     const argv = ["node", "/abs/cli.js", "run"];
     expect(targetsFor(argv)).toEqual([]);
   });
+
+  it("defaults full to false", () => {
+    const argv = ["node", "/abs/cli.js", "run", "tests/foo.agest.ts"];
+    expect(parseRunArgs(getCommandArgs(argv)).full).toBe(false);
+  });
+
+  it("sets full when --full is passed, without treating it as a target", () => {
+    const argv = ["node", "/abs/cli.js", "run", "--full", "tests/foo.agest.ts"];
+    const parsed = parseRunArgs(getCommandArgs(argv));
+    expect(parsed.full).toBe(true);
+    expect(parsed.targets).toEqual(["tests/foo.agest.ts"]);
+  });
 });

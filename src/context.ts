@@ -124,6 +124,10 @@ export class AgentContext<T = string> {
   }
 
   async execute(): Promise<AgentReport<T>> {
+    // `--full` flows in via the CLI runner (AGEST_FULL env) or directly on argv
+    // when a test file is run standalone (`tsx foo.test.ts --full`). Default is
+    // lean output: per-scene results only, no waterfall, no full report dump.
+    const full = process.env.AGEST_FULL === "1" || process.argv.includes("--full");
     const config = await loadConfig();
     setPricingOverrides(config.pricing);
     const parallelism = Math.max(1, config.parallelism ?? 1);
@@ -190,7 +194,7 @@ export class AgentContext<T = string> {
         logger.info(`${indent}       ${c.dim("significance:")} ${sigColor(`${(sig * 100).toFixed(1)}%`)} ${c.dim(`(pass rate: ${((result.passRate ?? 0) * 100).toFixed(1)}%)`)}`);
       }
 
-      if (result.events && result.events.length > 0) {
+      if (full && result.events && result.events.length > 0) {
         const costLabel = result.costUsd != null
           ? ` ${c.dim("·")} ${c.green(`$${Number(result.costUsd.toFixed(4))}`)}`
           : "";
@@ -321,10 +325,21 @@ export class AgentContext<T = string> {
     }
 
     const formatted = formatReport(report);
-    logger.info(formatted);
+
+    // Default mode prints a one-line summary; `--full` dumps the whole report.
+    if (full) {
+      logger.info(formatted);
+    } else {
+      const passed = results.filter((r) => r.passed).length;
+      const rateColor = successRate >= 0.95 ? c.green : successRate >= 0.5 ? c.yellow : c.red;
+      const costSummary = totalCostUsd != null ? ` ${c.dim("·")} ${c.green(`$${Number(totalCostUsd.toFixed(4))}`)}` : "";
+      logger.info(
+        `${rateColor(`${passed}/${results.length} passed`)} ${c.dim(`(${(successRate * 100).toFixed(0)}%)`)} ${c.dim("·")} ${c.dim(`${Math.round(totalDuration)}ms`)}${costSummary}`,
+      );
+    }
 
     const filepath = await writeReport(formatted, report.timestamp, report.name, report.dimensions);
-    logger.info(`\n${c.dim("Report saved to:")} ${c.cyan(filepath)}`);
+    logger.info(`${c.dim("Report saved to:")} ${c.cyan(filepath)}${full ? "" : c.dim(" (run with --full to print it)")}`);
 
     return report;
   }
