@@ -192,6 +192,23 @@ function formatDayLabel(dayKey: string): string {
   return `${MONTHS[(mo - 1) % 12]} ${d}`;
 }
 
+/** Whole local calendar days from `fromKey` to `toKey` (negative if before). */
+function daysBetween(fromKey: string, toKey: string): number {
+  const [ay, am, ad] = fromKey.split("-").map(Number);
+  const [by, bm, bd] = toKey.split("-").map(Number);
+  const a = new Date(ay, am - 1, ad).getTime();
+  const b = new Date(by, bm - 1, bd).getTime();
+  return Math.round((b - a) / DAY_MS);
+}
+
+/** "today" / "yesterday" / "N days ago" for a day key, relative to now. */
+function relativeDay(dayKey: string, now: number): string {
+  const n = daysBetween(dayKey, localDayKey(now));
+  if (n <= 0) return "today";
+  if (n === 1) return "yesterday";
+  return `${n} days ago`;
+}
+
 /**
  * Local calendar day for a timestamp. Checkpoints are stored UTC
  * (`new Date().toISOString()`); we bucket by the *local* day so the chart lines
@@ -278,20 +295,19 @@ function buildColumns(s: UsageSummary, now: number, modelOrder: string[]): Colum
 }
 
 /**
- * Date labels under the axis. The first (left-aligned) and last (right-aligned,
- * = today) are always anchored so the time range reads end-to-end; a couple of
- * evenly-spaced middle labels fill in when there's room. A label is skipped
- * rather than drawn over a neighbour, so nothing overlaps.
+ * Sparse fallback labels (MMM D) for narrow columns that can't fit a label each.
+ * First and last are anchored; a couple of evenly-spaced middles fill in. A
+ * label is skipped rather than drawn over a neighbour, so nothing overlaps.
+ * Column i occupies char range [i*colW, (i+1)*colW).
  */
-function renderAxisLabels(cols: Column[], gutter: number): string {
+function sparseAxisLabels(cols: Column[], gutter: number, colW: number): string {
   const n = cols.length;
-  const line: string[] = new Array(n).fill(" ");
+  const width = n * colW;
+  const line: string[] = new Array(width).fill(" ");
 
-  const place = (idx: number, preferStart: number) => {
+  const place = (idx: number) => {
     const label = formatDayLabel(cols[idx].label);
-    const start = Math.max(0, Math.min(preferStart, n - label.length));
-    // Treat out-of-range cells (undefined) as free — a label may overflow a
-    // very narrow axis; only a defined non-space cell counts as a collision.
+    const start = Math.max(0, Math.min(idx * colW, width - label.length));
     for (let k = 0; k < label.length; k++) {
       const cell = line[start + k];
       if (cell !== undefined && cell !== " ") return;
@@ -299,18 +315,20 @@ function renderAxisLabels(cols: Column[], gutter: number): string {
     for (let k = 0; k < label.length; k++) line[start + k] = label[k];
   };
 
-  if (n > 0) place(0, 0);
-  if (n > 1) place(n - 1, n - formatDayLabel(cols[n - 1].label).length);
+  if (n > 0) place(0);
+  if (n > 1) place(n - 1);
   const mids = n > 16 ? [Math.round(n / 3), Math.round((2 * n) / 3)] : n > 8 ? [Math.round(n / 2)] : [];
-  for (const idx of mids) place(idx, idx);
+  for (const idx of mids) place(idx);
 
-  return `  ${" ".repeat(gutter)} ${c.dim(line.join(""))}`;
+  return `  ${" ".repeat(gutter)} ${c.dim(line.join("").replace(/\s+$/, ""))}`;
 }
 
 /**
  * Vertical stacked column chart over a continuous date axis. Each column is a
  * day (or chunk); each model a solid color. Segment heights use cumulative
- * rounding so they sum exactly to the column height (no drift).
+ * rounding so they sum exactly to the column height (no drift). Columns are
+ * widened to fit a day-number label under each when the terminal has room;
+ * otherwise we fall back to sparse MMM-D labels.
  */
 function renderVerticalChart(
   s: UsageSummary,
@@ -324,6 +342,13 @@ function renderVerticalChart(
 
   const maxLabel = s.metric === "cost" ? formatCost(max) : formatTokens(max);
   const gw = Math.max(maxLabel.length, 1);
+
+  // Column width: wide enough to put a 2-digit day under each bar when we can.
+  const termCols = process.stdout.columns ?? 80;
+  const avail = Math.max(8, termCols - gw - 4);
+  const colW = Math.max(1, Math.min(4, Math.floor(avail / cols.length)));
+  const barW = Math.max(1, colW - 1); // 1-col gap between bars when colW > 1
+  const labelEach = colW >= 3; // room for "DD" + a gap
 
   const stacks = cols.map((col) => {
     const cells: (string | null)[] = new Array(CHART_H).fill(null);
@@ -346,19 +371,39 @@ function renderVerticalChart(
     return cells;
   });
 
+  const pad = " ".repeat(gw);
   console.log(`\n  ${metricTitle} per Day`);
   for (let r = CHART_H - 1; r >= 0; r--) {
-    const label = r === CHART_H - 1 ? maxLabel : r === 0 ? "0" : "";
-    const gutter = c.dim(label.padStart(gw));
-    const row = stacks
-      .map((cells) => {
-        const model = cells[r];
-        return model ? (colors.get(model) ?? c.gray)("█") : " ";
-      })
-      .join("");
-    console.log(`  ${gutter} ${row}`);
+    const yLabel = r === CHART_H - 1 ? maxLabel : r === 0 ? "0" : "";
+    let row = "";
+    for (const cells of stacks) {
+      const model = cells[r];
+      const block = model ? (colors.get(model) ?? c.gray)("█".repeat(barW)) : " ".repeat(barW);
+      row += block + " ".repeat(colW - barW);
+    }
+    console.log(`  ${c.dim(yLabel.padStart(gw))} ${row.replace(/\s+$/, "")}`);
   }
-  console.log(renderAxisLabels(cols, gw));
+  console.log(`  ${pad} ${c.dim("─".repeat(cols.length * colW))}`);
+
+  if (labelEach) {
+    // Day-of-month under each column…
+    let dayRow = "";
+    for (const col of cols) dayRow += col.label.slice(8, 10).padEnd(colW);
+    console.log(`  ${pad} ${c.dim(dayRow.replace(/\s+$/, ""))}`);
+    // …and a month abbrev at the first column + each month change.
+    const monthRow: string[] = new Array(cols.length * colW).fill(" ");
+    let prevMonth = "";
+    cols.forEach((col, i) => {
+      const mo = MONTHS[(Number(col.label.slice(5, 7)) - 1) % 12];
+      if (mo !== prevMonth) {
+        for (let k = 0; k < mo.length; k++) monthRow[i * colW + k] = mo[k];
+        prevMonth = mo;
+      }
+    });
+    console.log(`  ${pad} ${c.dim(monthRow.join("").replace(/\s+$/, ""))}`);
+  } else {
+    console.log(sparseAxisLabels(cols, gw, colW));
+  }
 }
 
 /** Horizontal per-day bars — the no-color / dumb-terminal fallback. */
@@ -378,14 +423,27 @@ function renderHorizontalChart(s: UsageSummary): void {
 // Rendering
 // ---------------------------------------------------------------------------
 
+/** A model row counts as displayable only if it recorded some usage. */
+function hasUsage(r: UsageModelRow): boolean {
+  return r.inTokens > 0 || r.outTokens > 0 || r.cost > 0;
+}
+
 function render(s: UsageSummary, now: number): void {
-  const colors = assignColors(s.rows.map((r) => r.model));
-  const modelOrder = s.rows.map((r) => r.model);
+  // Drop rows that recorded nothing (e.g. a crashed run with no model/tokens) —
+  // a "0.0%" all-zero line is noise. Their run count is surfaced as a footnote.
+  const rows = s.rows.filter(hasUsage);
+  const emptyRuns = s.rows.filter((r) => !hasUsage(r)).reduce((n, r) => n + r.runs, 0);
+
+  const colors = assignColors(rows.map((r) => r.model));
+  const modelOrder = rows.map((r) => r.model);
+
+  const newestDay = s.days[s.days.length - 1]?.day;
+  const fresh = newestDay ? `  ${c.dim("·")}  ${c.dim(`newest: ${formatDayLabel(newestDay)} (${relativeDay(newestDay, now)})`)}` : "";
 
   console.log("\n" + "━".repeat(W));
   console.log(
     `  ${c.bold("AGEST USAGE")}  ${c.dim("·")}  ${s.totals.runs} run${s.totals.runs !== 1 ? "s" : ""}` +
-      `  ${c.dim("·")}  ${c.dim(windowLabel(s.window))}  ${c.dim("·")}  ${c.dim(`metric: ${s.metric}`)}`,
+      `  ${c.dim("·")}  ${c.dim(windowLabel(s.window))}  ${c.dim("·")}  ${c.dim(`metric: ${s.metric}`)}${fresh}`,
   );
   console.log("━".repeat(W));
 
@@ -395,8 +453,8 @@ function render(s: UsageSummary, now: number): void {
   // Per-model breakdown — colored ● dot ties each model to its chart color.
   console.log(`\n  By Model`);
   console.log("  " + "─".repeat(W - 2));
-  const grand = s.rows.reduce((sum, r) => sum + metricValue(r, s.metric), 0);
-  for (const r of s.rows) {
+  const grand = rows.reduce((sum, r) => sum + metricValue(r, s.metric), 0);
+  for (const r of rows) {
     const pct = grand > 0 ? (metricValue(r, s.metric) / grand) * 100 : 0;
     const dot = (colors.get(r.model) ?? c.gray)("●");
     const head = `${dot} ${c.bold(r.model)} ${c.dim(`(${pct.toFixed(1)}%)`)}`;
@@ -406,6 +464,9 @@ function render(s: UsageSummary, now: number): void {
       ` ${c.dim(`· ${r.runs} run${r.runs !== 1 ? "s" : ""}`)}`;
     console.log(`  ${head}`);
     console.log(`      ${c.dim(detail)}`);
+  }
+  if (emptyRuns > 0) {
+    console.log(`  ${c.dim(`+ ${emptyRuns} run${emptyRuns !== 1 ? "s" : ""} with no recorded usage`)}`);
   }
 
   // Totals
