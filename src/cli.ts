@@ -2,7 +2,7 @@
 
 import { spawn } from "child_process";
 import { fileURLToPath } from "node:url";
-import { realpathSync, mkdtempSync, mkdirSync, readFileSync, appendFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -12,12 +12,12 @@ import { main as usage } from "./usage.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 import { c } from "./logger.js";
-import type { CheckpointRecord } from "./types.js";
 
 /**
- * One record per `agent()` run, appended by the child process (see
+ * One footer line per `agent()` run, appended by the child process (see
  * AgentContext.execute → AGEST_SUMMARY_FILE). The parent reads them all back to
- * print a vitest-style footer across files.
+ * print a vitest-style cross-file footer. Checkpoints themselves are persisted
+ * by the child as each run completes — not carried here.
  */
 interface RunSummaryRecord {
   file: string;
@@ -27,8 +27,6 @@ interface RunSummaryRecord {
   failed: number;
   duration: number;
   costUsd: number | null;
-  /** Full checkpoint payload the parent appends to the canonical run log. */
-  checkpoint?: CheckpointRecord;
 }
 
 export interface ParsedRunArgs {
@@ -130,7 +128,6 @@ async function run(args: string[]) {
   }
 
   const records = readSummary(summaryFile);
-  writeCheckpoints(records);
   printRunSummary(records, files.length);
   try {
     rmSync(dirname(summaryFile), { recursive: true, force: true });
@@ -150,26 +147,6 @@ function readSummary(summaryFile: string): RunSummaryRecord[] {
       .map((line) => JSON.parse(line) as RunSummaryRecord);
   } catch {
     return []; // no children wrote results (older lib, or all crashed early)
-  }
-}
-
-/**
- * The parent is the single writer of the canonical run log: append every
- * child's checkpoint record to `.reports/checkpoints.jsonl` in one buffer
- * (race-free across the spawned children). Best-effort — never break a run.
- */
-function writeCheckpoints(records: RunSummaryRecord[]) {
-  const checkpoints = records
-    .map((r) => r.checkpoint)
-    .filter((c): c is CheckpointRecord => c != null);
-  if (checkpoints.length === 0) return;
-  try {
-    const dir = join(process.cwd(), ".reports");
-    mkdirSync(dir, { recursive: true });
-    const lines = checkpoints.map((c) => JSON.stringify(c)).join("\n") + "\n";
-    appendFileSync(join(dir, "checkpoints.jsonl"), lines, "utf8");
-  } catch {
-    /* ignore */
   }
 }
 

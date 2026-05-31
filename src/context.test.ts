@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 vi.mock("./config", () => ({
   loadConfig: vi.fn().mockResolvedValue({}),
@@ -276,6 +280,29 @@ describe("AgentContext", () => {
       expect(checkpoint.dimensions.suiteHash).toMatch(/^[a-f0-9]{12}$/);
       expect(report.name).toBe("test-agent");
       expect(report.totalCases).toBe(1);
+    });
+
+    it("under `agest run`, still appends the checkpoint per-run and writes only a footer line", async () => {
+      // Regression: checkpoints used to be buffered by the parent and flushed
+      // once after the whole sweep, so interrupting it lost everything. Now the
+      // child persists each completed run immediately; the summary file carries
+      // just the cross-file footer totals (no checkpoint payload).
+      const summaryFile = join(tmpdir(), `agest-summary-${randomUUID()}.jsonl`);
+      process.env.AGEST_SUMMARY_FILE = summaryFile;
+      try {
+        const ctx = new AgentContext(vi.fn(), "run-agent");
+        ctx.registerScene("p");
+        await ctx.execute();
+
+        expect(mockedAppendCheckpoint).toHaveBeenCalledTimes(1);
+
+        const line = JSON.parse(readFileSync(summaryFile, "utf8").trim());
+        expect(line).toMatchObject({ name: "run-agent", total: 1, passed: 1, failed: 0 });
+        expect(line.checkpoint).toBeUndefined();
+      } finally {
+        rmSync(summaryFile, { force: true });
+        delete process.env.AGEST_SUMMARY_FILE;
+      }
     });
 
     it("uses config.parallelism", async () => {

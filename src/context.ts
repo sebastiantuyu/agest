@@ -421,10 +421,20 @@ export class AgentContext<T = string> {
       recordPath,
     };
 
-    // When launched by `agest run`, hand the record to the parent (single writer
-    // of the checkpoint log) and let it print the cross-file footer. Standalone
-    // (`tsx foo.agest.ts`), this process is the lone writer — append directly.
-    // Best-effort throughout: never let persistence break a run.
+    // Persist the checkpoint the moment THIS agent() completes — straight to the
+    // canonical log — so a mid-sweep exit (Ctrl-C, or a later file crashing the
+    // parent) still keeps every run that already finished. Previously the parent
+    // buffered all children and flushed once at the very end, so interrupting a
+    // sweep lost everything. Best-effort: never let persistence break a run.
+    try {
+      await appendCheckpoint(checkpoint);
+    } catch {
+      /* ignore */
+    }
+
+    // Under `agest run`, also emit a lightweight footer line for the parent's
+    // cross-file summary (totals / pass / fail). The parent no longer persists
+    // checkpoints — the append above already did, per completed agent().
     const summaryFile = process.env.AGEST_SUMMARY_FILE;
     if (summaryFile) {
       try {
@@ -438,15 +448,8 @@ export class AgentContext<T = string> {
             failed: results.length - casesPassed,
             duration: Math.round(totalDuration),
             costUsd: totalCostUsd ?? null,
-            checkpoint,
           }) + "\n",
         );
-      } catch {
-        /* ignore */
-      }
-    } else {
-      try {
-        await appendCheckpoint(checkpoint);
       } catch {
         /* ignore */
       }
