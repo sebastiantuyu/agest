@@ -16,6 +16,10 @@ export interface UsageModelRow {
   outTokens: number;
   cost: number;
   runs: number;
+  /** Sum of test cases across this model's runs (0 if none recorded). */
+  totalCases: number;
+  /** Sum of passing cases across this model's runs. */
+  casesPassed: number;
 }
 
 export interface UsageTally {
@@ -35,13 +39,26 @@ export interface UsageSummary {
   rows: UsageModelRow[];
   /** Active days only (≥1 run), chronological. */
   days: UsageDayBucket[];
-  totals: { inTokens: number; outTokens: number; cost: number; runs: number };
+  totals: {
+    inTokens: number;
+    outTokens: number;
+    cost: number;
+    runs: number;
+    /** Total test cases across all kept runs. */
+    totalCases: number;
+    /** Total passing cases across all kept runs. */
+    casesPassed: number;
+    /** Runs that recorded at least one test case (a "suite" execution). */
+    suites: number;
+  };
   window: UsageWindow;
   metric: UsageMetric;
   /** Records kept after window + model filtering. */
   filteredCount: number;
   /** True if any kept record carried a cost figure. */
   hasCost: boolean;
+  /** True if any kept record carried test outcomes. */
+  hasTests: boolean;
 }
 
 const DAY_MS = 86_400_000;
@@ -83,9 +100,10 @@ export function aggregateUsage(
 
   const byModel = new Map<string, UsageModelRow>();
   const byDay = new Map<string, UsageDayBucket>();
-  const totals = { inTokens: 0, outTokens: 0, cost: 0, runs: 0 };
+  const totals = { inTokens: 0, outTokens: 0, cost: 0, runs: 0, totalCases: 0, casesPassed: 0, suites: 0 };
   let filteredCount = 0;
   let hasCost = false;
+  let hasTests = false;
 
   for (const rec of records) {
     const ts = new Date(rec.timestamp).getTime();
@@ -99,17 +117,29 @@ export function aggregateUsage(
     const cost = rec.costUsd ?? 0;
     if (rec.costUsd != null) hasCost = true;
 
+    const cases = rec.totalCases ?? 0;
+    const passed = rec.casesPassed ?? 0;
+    const hasTest = cases > 0;
+    if (hasTest) hasTests = true;
+
     filteredCount++;
     totals.inTokens += inTok;
     totals.outTokens += outTok;
     totals.cost += cost;
     totals.runs += 1;
+    totals.totalCases += cases;
+    totals.casesPassed += passed;
+    if (hasTest) totals.suites += 1;
 
-    const row = byModel.get(m) ?? { model: m, inTokens: 0, outTokens: 0, cost: 0, runs: 0 };
+    const row =
+      byModel.get(m) ??
+      { model: m, inTokens: 0, outTokens: 0, cost: 0, runs: 0, totalCases: 0, casesPassed: 0 };
     row.inTokens += inTok;
     row.outTokens += outTok;
     row.cost += cost;
     row.runs += 1;
+    row.totalCases += cases;
+    row.casesPassed += passed;
     byModel.set(m, row);
 
     const dayKey = localDayKey(ts);
@@ -130,7 +160,7 @@ export function aggregateUsage(
   );
   const days = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
 
-  return { rows, days, totals, window, metric, filteredCount, hasCost };
+  return { rows, days, totals, window, metric, filteredCount, hasCost, hasTests };
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +178,21 @@ export function formatTokens(n: number): string {
 export function formatCost(n: number): string {
   if (n === 0) return "$0";
   return `$${Number(n.toFixed(4))}`;
+}
+
+/** Pass rate as a one-decimal percentage; "—" when nothing ran. */
+export function formatPassRate(passed: number, total: number): string {
+  if (total === 0) return "—";
+  return `${((passed / total) * 100).toFixed(1)}%`;
+}
+
+/** Tint a pass rate: green ≥90%, yellow ≥70%, red below — a quick health read. */
+function passColor(passed: number, total: number): (s: string) => string {
+  if (total === 0) return c.dim;
+  const rate = passed / total;
+  if (rate >= 0.9) return c.green;
+  if (rate >= 0.7) return c.yellow;
+  return c.red;
 }
 
 function formatMetric(
@@ -464,6 +509,12 @@ function render(s: UsageSummary, now: number): void {
       ` ${c.dim(`· ${r.runs} run${r.runs !== 1 ? "s" : ""}`)}`;
     console.log(`  ${head}`);
     console.log(`      ${c.dim(detail)}`);
+    if (r.totalCases > 0) {
+      const tint = passColor(r.casesPassed, r.totalCases);
+      console.log(
+        `      ${tint(`${formatPassRate(r.casesPassed, r.totalCases)} pass`)} ${c.dim(`(${r.casesPassed}/${r.totalCases} cases)`)}`,
+      );
+    }
   }
   if (emptyRuns > 0) {
     console.log(`  ${c.dim(`+ ${emptyRuns} run${emptyRuns !== 1 ? "s" : ""} with no recorded usage`)}`);
@@ -476,6 +527,15 @@ function render(s: UsageSummary, now: number): void {
     `  Total  ${c.dim("·")}  In: ${formatTokens(s.totals.inTokens)}` +
       `  ${c.dim("·")}  Out: ${formatTokens(s.totals.outTokens)}${totalCost}`,
   );
+  if (s.hasTests) {
+    const { casesPassed, totalCases, suites } = s.totals;
+    const tint = passColor(casesPassed, totalCases);
+    console.log(
+      `  Tests  ${c.dim("·")}  ${tint(`${formatPassRate(casesPassed, totalCases)} pass`)}` +
+        `  ${c.dim("·")}  ${casesPassed}/${totalCases} cases` +
+        `  ${c.dim("·")}  ${c.dim(`${suites} suite${suites !== 1 ? "s" : ""}`)}`,
+    );
+  }
   console.log("━".repeat(W) + "\n");
 }
 
