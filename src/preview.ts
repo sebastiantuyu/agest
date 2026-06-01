@@ -1494,7 +1494,7 @@ function generateHTML(groups: AgentGroup[], totalReports: number): string {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+async function main(_args: string[] = []) {
   const cwd = process.cwd();
   const reports = await loadReports(cwd);
 

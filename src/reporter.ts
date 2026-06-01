@@ -203,8 +203,10 @@ export async function writeSnapshot(content: string, runId: string): Promise<str
 
 /**
  * Append one record to the canonical append-only run log
- * (`.reports/checkpoints.jsonl`). Used on the standalone path (a lone test-file
- * process). When launched by `agest run`, the PARENT owns this write instead.
+ * (`.reports/checkpoints.jsonl`). Called by every `agent()` as soon as it
+ * completes — both standalone (`tsx foo.agest.ts`) and under `agest run` (the
+ * spawned child shares the parent's cwd, so it lands in the same log). Writing
+ * per-run keeps finished runs durable if a sweep is interrupted partway.
  */
 export async function appendCheckpoint(record: CheckpointRecord): Promise<void> {
   const reportsDir = join(process.cwd(), ".reports");

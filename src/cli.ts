@@ -2,20 +2,22 @@
 
 import { spawn } from "child_process";
 import { fileURLToPath } from "node:url";
-import { realpathSync, mkdtempSync, mkdirSync, readFileSync, appendFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { parseArgs } from "node:util";
 import { main as stats } from "./stats.js";
+import { main as usage } from "./usage.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 import { c } from "./logger.js";
-import type { CheckpointRecord } from "./types.js";
 
 /**
- * One record per `agent()` run, appended by the child process (see
+ * One footer line per `agent()` run, appended by the child process (see
  * AgentContext.execute → AGEST_SUMMARY_FILE). The parent reads them all back to
- * print a vitest-style footer across files.
+ * print a vitest-style cross-file footer. Checkpoints themselves are persisted
+ * by the child as each run completes — not carried here.
  */
 interface RunSummaryRecord {
   file: string;
@@ -25,8 +27,6 @@ interface RunSummaryRecord {
   failed: number;
   duration: number;
   costUsd: number | null;
-  /** Full checkpoint payload the parent appends to the canonical run log. */
-  checkpoint?: CheckpointRecord;
 }
 
 export interface ParsedRunArgs {
@@ -48,31 +48,29 @@ export function getCommandArgs(argv: string[]): string[] {
 }
 
 export function parseRunArgs(args: string[]): ParsedRunArgs {
-  const targets: string[] = [];
-  let pattern: string | undefined;
-  let full = false;
-  let record = false;
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--pattern" || a === "-p") {
-      pattern = args[++i];
-      if (pattern === undefined) {
-        console.error("  Error: --pattern requires a value");
-        process.exit(1);
-      }
-    } else if (a.startsWith("--pattern=")) {
-      pattern = a.slice("--pattern=".length);
-    } else if (a === "--full") {
-      full = true;
-    } else if (a === "--record") {
-      record = true;
-    } else {
-      targets.push(a);
-    }
+  let values;
+  let positionals;
+  try {
+    ({ values, positionals } = parseArgs({
+      args,
+      options: {
+        pattern: { type: "string", short: "p" },
+        full: { type: "boolean", default: false },
+        record: { type: "boolean", default: false },
+      },
+      allowPositionals: true,
+    }));
+  } catch (err) {
+    console.error(`  Error: ${(err as Error).message}`);
+    process.exit(1);
   }
 
-  return { pattern, targets, full, record };
+  return {
+    pattern: values.pattern,
+    targets: positionals,
+    full: Boolean(values.full),
+    record: Boolean(values.record),
+  };
 }
 
 async function run(args: string[]) {
@@ -130,7 +128,6 @@ async function run(args: string[]) {
   }
 
   const records = readSummary(summaryFile);
-  writeCheckpoints(records);
   printRunSummary(records, files.length);
   try {
     rmSync(dirname(summaryFile), { recursive: true, force: true });
@@ -150,26 +147,6 @@ function readSummary(summaryFile: string): RunSummaryRecord[] {
       .map((line) => JSON.parse(line) as RunSummaryRecord);
   } catch {
     return []; // no children wrote results (older lib, or all crashed early)
-  }
-}
-
-/**
- * The parent is the single writer of the canonical run log: append every
- * child's checkpoint record to `.reports/checkpoints.jsonl` in one buffer
- * (race-free across the spawned children). Best-effort — never break a run.
- */
-function writeCheckpoints(records: RunSummaryRecord[]) {
-  const checkpoints = records
-    .map((r) => r.checkpoint)
-    .filter((c): c is CheckpointRecord => c != null);
-  if (checkpoints.length === 0) return;
-  try {
-    const dir = join(process.cwd(), ".reports");
-    mkdirSync(dir, { recursive: true });
-    const lines = checkpoints.map((c) => JSON.stringify(c)).join("\n") + "\n";
-    appendFileSync(join(dir, "checkpoints.jsonl"), lines, "utf8");
-  } catch {
-    /* ignore */
   }
 }
 
@@ -244,45 +221,83 @@ function printRunSummary(records: RunSummaryRecord[], discoveredFiles: number) {
   if (s.cost > 0) line("Cost", c.green(`$${Number(s.cost.toFixed(4))}`));
 }
 
-function printUsage() {
-  console.log(`
-  Usage: agest <command>
-
-  Commands:
-    run        Run test file(s), directories, or glob patterns
-               agest run tests/                       # walks for ${DEFAULT_PATTERN}
-               agest run src/agest --pattern "**/*.test.ts"
-               agest run "tests/**/*.agest.ts" path/to/file.agest.ts
-               agest run tests/ --full                # also print waterfall + full report
-               agest run tests/ --record              # also save a full per-scene snapshot
-    stats      Show aggregated test statistics
-               agest stats --suite <suiteHash>        # filter to one suite's history
-               agest stats --export-csv [path]        # flatten the run log to CSV
-    preview    Generate an HTML report preview
-`);
+/**
+ * A CLI command. `run` receives the args that follow the command word (already
+ * sliced by getCommandArgs), so a command never has to re-derive them from
+ * process.argv. Adding a command = append one entry to COMMANDS below.
+ */
+interface Command {
+  name: string;
+  summary: string;
+  /** Example invocation lines, shown under the command in the usage text. */
+  usage?: string[];
+  run(args: string[]): void | Promise<void>;
 }
 
-const KNOWN_COMMANDS = new Set(["run", "stats", "preview"]);
+const COMMANDS: Command[] = [
+  {
+    name: "run",
+    summary: "Run test file(s), directories, or glob patterns",
+    usage: [
+      `agest run tests/                       # walks for ${DEFAULT_PATTERN}`,
+      `agest run src/agest --pattern "**/*.test.ts"`,
+      `agest run "tests/**/*.agest.ts" path/to/file.agest.ts`,
+      `agest run tests/ --full                # also print waterfall + full report`,
+      `agest run tests/ --record              # also save a full per-scene snapshot`,
+    ],
+    run: run,
+  },
+  {
+    name: "stats",
+    summary: "Show aggregated test statistics",
+    usage: [
+      `agest stats --suite <suiteHash>        # filter to one suite's history`,
+      `agest stats --export-csv [path]        # flatten the run log to CSV`,
+    ],
+    run: stats,
+  },
+  {
+    name: "usage",
+    summary: "Show token/cost usage over time",
+    usage: [
+      `agest usage                            # last 7 days, by tokens`,
+      `agest usage --metric cost              # chart + breakdown by cost`,
+      `agest usage --window 7d|30d|all        # pick the time window`,
+      `agest usage --model <model>            # filter to one model`,
+    ],
+    run: usage,
+  },
+  {
+    name: "preview",
+    summary: "Generate an HTML report preview",
+    run: preview,
+  },
+];
+
+function printUsage() {
+  const lines = ["", "  Usage: agest <command>", "", "  Commands:"];
+  const pad = Math.max(...COMMANDS.map((cmd) => cmd.name.length));
+  for (const cmd of COMMANDS) {
+    lines.push(`    ${cmd.name.padEnd(pad)}  ${cmd.summary}`);
+    for (const ex of cmd.usage ?? []) {
+      lines.push(`    ${" ".repeat(pad)}  ${c.dim(ex)}`);
+    }
+  }
+  lines.push("");
+  console.log(lines.join("\n"));
+}
 
 export async function main(argv: string[]): Promise<void> {
   const command = argv[2];
   const commandArgs = getCommandArgs(argv);
 
-  if (!command || !KNOWN_COMMANDS.has(command)) {
+  const cmd = COMMANDS.find((c) => c.name === command);
+  if (!cmd) {
     printUsage();
     process.exit(command ? 1 : 0);
   }
 
-  if (command === "run") {
-    await run(commandArgs);
-    return;
-  }
-
-  // stats/preview read their args from `process.argv.slice(2)`, so normalize
-  // argv to drop the command word before handing off.
-  process.argv = [argv[0], argv[1], ...commandArgs];
-  if (command === "stats") await stats();
-  else await preview();
+  await cmd.run(commandArgs);
 }
 
 // Only run as a CLI when invoked directly (bin or `tsx src/cli.ts`), not when

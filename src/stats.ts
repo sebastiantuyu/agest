@@ -1,5 +1,6 @@
 import { readdir, writeFile, rm } from "fs/promises";
 import { join, relative } from "path";
+import { parseArgs } from "node:util";
 import {
   type ParsedReport,
   loadReports,
@@ -284,26 +285,41 @@ async function exportCsv(cwd: string, outPath: string) {
   console.log(`\n  Exported ${records.length} checkpoint${records.length !== 1 ? "s" : ""} to ${outPath}\n`);
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const agentFlagIdx = args.indexOf("--agent");
-  const agentFilter = agentFlagIdx !== -1 ? args[agentFlagIdx + 1] : undefined;
-  const modelFlagIdx = args.indexOf("--model");
-  const modelFilter = modelFlagIdx !== -1 ? args[modelFlagIdx + 1] : undefined;
-  const suiteFlagIdx = args.indexOf("--suite");
-  const suiteFilter = suiteFlagIdx !== -1 ? args[suiteFlagIdx + 1] : undefined;
+async function main(args: string[]) {
+  let values;
+  let positionals: string[];
+  try {
+    ({ values, positionals } = parseArgs({
+      args,
+      options: {
+        agent: { type: "string" },
+        model: { type: "string" },
+        suite: { type: "string" },
+        purge: { type: "boolean", default: false },
+        "export-csv": { type: "boolean", default: false },
+      },
+      allowPositionals: true,
+    }));
+  } catch (err) {
+    console.error(`  Error: ${(err as Error).message}`);
+    process.exit(1);
+  }
 
-  if (args.includes("--purge")) {
+  const agentFilter = values.agent;
+  const modelFilter = values.model;
+  const suiteFilter = values.suite;
+
+  if (values.purge) {
     await purge(process.cwd());
     return;
   }
 
   const cwd = process.cwd();
 
-  const csvFlagIdx = args.indexOf("--export-csv");
-  if (csvFlagIdx !== -1) {
-    const next = args[csvFlagIdx + 1];
-    const outPath = next && !next.startsWith("--") ? next : "agest-checkpoints.csv";
+  if (values["export-csv"]) {
+    // The optional output path is the first positional, e.g.
+    // `agest stats --export-csv out.csv`; defaults when omitted.
+    const outPath = positionals[0] ?? "agest-checkpoints.csv";
     await exportCsv(cwd, outPath);
     return;
   }
