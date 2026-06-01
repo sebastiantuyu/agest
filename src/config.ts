@@ -1,4 +1,5 @@
 import path from "path";
+import type { AreasConfig } from "./types";
 
 export type JudgeExecutor = (prompt: string) => Promise<string>;
 
@@ -25,6 +26,12 @@ export interface AgestConfig {
    * you use that isn't already in the table, or to override a default.
    */
   pricing?: Record<string, { input: number; output: number }>;
+  /**
+   * Capability-area coverage ("coverage for agent testing"). Compose preset
+   * area sets and tune confidence targets; surfaced via `agest coverage`.
+   * Warn-only — never affects exit codes. See `src/areas.ts` for the catalog.
+   */
+  areas?: AreasConfig;
 }
 
 export function defineConfig(config: AgestConfig): AgestConfig {

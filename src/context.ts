@@ -4,12 +4,14 @@ import { relative } from "node:path";
 import type {
   AgentExecutor,
   AgentReport,
+  AreaSpec,
   CheckpointRecord,
   HookFn,
   SceneDefinition,
   SceneResult,
 } from "./types";
 import { executeScene } from "./runner";
+import { resolveAreas, computeAreaCoverage } from "./areas";
 import { resolveText } from "./resolve";
 import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter";
 import { wilsonInterval } from "./reports";
@@ -36,6 +38,7 @@ export class SceneBuilder<T = string> {
   private _turns?: number;
   private _runs?: number;
   private _suite?: string;
+  private _tags?: string[];
   private _schema?: StandardSchemaV1;
 
   constructor(private _prompt: string) {}
@@ -47,6 +50,15 @@ export class SceneBuilder<T = string> {
 
   turns(n: number): this {
     this._turns = n;
+    return this;
+  }
+
+  /**
+   * Tag this scene with the capability areas it exercises (cross-cutting,
+   * many-to-many) — the basis for `agest coverage`. Repeated calls merge.
+   */
+  tags(...names: string[]): this {
+    this._tags = [...(this._tags ?? []), ...names];
     return this;
   }
 
@@ -86,6 +98,7 @@ export class SceneBuilder<T = string> {
       turns: this._turns,
       runs: this._runs,
       suite: this._suite,
+      tags: this._tags,
       schema: this._schema,
     };
   }
@@ -134,6 +147,16 @@ export class AgentContext<T = string> {
     const full = process.env.AGEST_FULL === "1" || process.argv.includes("--full");
     const config = await loadConfig();
     setPricingOverrides(config.pricing);
+    // Resolve capability areas up front so a bad preset id fails fast with a
+    // clear message instead of running every scene and throwing at the end
+    // (where the harness would swallow the rejection).
+    let areaSet: Map<string, AreaSpec>;
+    try {
+      areaSet = resolveAreas(config.areas).optedIn;
+    } catch (err) {
+      logger.info(c.red(`\n  Config error (areas): ${(err as Error).message}\n`));
+      throw err;
+    }
     const parallelism = Math.max(1, config.parallelism ?? 1);
     const definitions = this._scenes.map((s) => {
       const def = s.toDefinition();
@@ -337,6 +360,15 @@ export class AgentContext<T = string> {
     }
     const wilson = wilsonInterval(trialPasses, trials);
 
+    // Capability-area coverage ("coverage for agent testing"). The opted-in set
+    // was resolved up front (areaSet); tally it against the run's results and
+    // persist onto the report + checkpoint — `agest coverage` reads it back.
+    const areasOptedIn = [...areaSet.keys()].sort();
+    const { areaCoverage, areaCoverageBySuite, untaggedCount } = computeAreaCoverage(
+      results,
+      areaSet,
+    );
+
     const report: AgentReport<T> = {
       name: this._name,
       model: firstMeta?.model,
@@ -363,6 +395,10 @@ export class AgentContext<T = string> {
       totalInputTokens,
       totalOutputTokens,
       totalCostUsd,
+      areaCoverage,
+      areaCoverageBySuite: areaCoverageBySuite.length ? areaCoverageBySuite : undefined,
+      areasOptedIn,
+      untaggedCount,
       results,
     };
 
@@ -418,6 +454,10 @@ export class AgentContext<T = string> {
       totalOutputTokens,
       avgInputTokensPerCase: averageInputTokensPerCase,
       avgOutputTokensPerCase: averageOutputTokensPerCase,
+      areaCoverage,
+      areaCoverageBySuite: areaCoverageBySuite.length ? areaCoverageBySuite : undefined,
+      areasOptedIn,
+      untaggedCount,
       recordPath,
     };
 

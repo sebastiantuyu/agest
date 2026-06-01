@@ -85,8 +85,63 @@ export interface SceneDefinition {
   turns?: number;
   runs?: number;
   suite?: string;
+  /** Capability areas this scene exercises (cross-cutting, many-to-many). */
+  tags?: string[];
   /** Standard Schema validated against the native value before user assertions. */
   schema?: StandardSchemaV1;
+}
+
+// ---------------------------------------------------------------------------
+// Capability areas — "coverage for agent testing"
+// ---------------------------------------------------------------------------
+
+export interface AreaSpec {
+  /** Confidence target: min DISTINCT scenes for the area's pass rate to be trustworthy. */
+  minScenes?: number;
+  /**
+   * RESERVED — never invoked in v1. Future auto-detection hook so a catalog
+   * entry (or a community preset) can claim a scene without an explicit tag.
+   */
+  detect?: (result: SceneResult<any>) => boolean;
+}
+
+export interface AreaCatalogEntry extends AreaSpec {
+  id: string;
+  description: string;
+}
+
+/** Per-area roll-up persisted on the report + checkpoint. */
+export interface AreaCoverage {
+  id: string;
+  /** Distinct tagged scenes for this area. */
+  scenes: number;
+  /** Distinct scenes that passed. */
+  passed: number;
+  /** passed / scenes, 0 when scenes === 0. */
+  passRate: number;
+  /** Σ runs across this area's scenes (scenes×runs) — the Wilson trial basis. */
+  trials: number;
+  /** Passing trials. */
+  trialPasses: number;
+  /** Catalog area vs open domain tag. */
+  inCatalog: boolean;
+  /** Resolved confidence target carried through for rendering. */
+  minScenes?: number;
+}
+
+export interface SuiteAreaCoverage {
+  suite: string;
+  areas: AreaCoverage[];
+}
+
+/** The `areas` block in agest.config.ts. */
+export interface AreasConfig {
+  /** Preset ids to compose, e.g. ["agest/recommended"]. Unknown id throws. */
+  extends?: string[];
+  /** Extra areas to opt in — id only, or id + a minScenes override. */
+  include?: Array<string | { id: string; minScenes?: number }>;
+  /** Area ids to drop from the opted-in set. */
+  exclude?: string[];
 }
 
 export type JudgeVerdict = "pass" | "fail" | "partial";
@@ -113,6 +168,8 @@ export interface SceneResult<T = string> {
   error?: string;
   judgement?: JudgeResult;
   suite?: string;
+  /** Capability areas this scene exercises (carried from the definition). */
+  tags?: string[];
   runs?: RunResult<T>[];
   passRate?: number;
   statisticalSignificance?: number;
@@ -150,6 +207,14 @@ export interface AgentReport<T = string> {
   totalInputTokens?: number;
   totalOutputTokens?: number;
   totalCostUsd?: number;
+  /** Per-area coverage roll-up across every scene in this run. */
+  areaCoverage?: AreaCoverage[];
+  /** Same roll-up partitioned by suite (omitted when the run has no suites). */
+  areaCoverageBySuite?: SuiteAreaCoverage[];
+  /** Area ids opted into via config — the expected set the roll-up is measured against. */
+  areasOptedIn?: string[];
+  /** Scenes carrying no tags (counted toward no area). */
+  untaggedCount?: number;
   results: SceneResult<T>[];
 }
 
@@ -180,6 +245,11 @@ export interface CheckpointRecord {
   totalOutputTokens?: number;
   avgInputTokensPerCase?: number;
   avgOutputTokensPerCase?: number;
+  /** Per-area coverage roll-up — read back by `agest coverage`, grouped by sweepId. */
+  areaCoverage?: AreaCoverage[];
+  areaCoverageBySuite?: SuiteAreaCoverage[];
+  areasOptedIn?: string[];
+  untaggedCount?: number;
   /** Relative path to the full YAML snapshot, set only when run with --record. */
   recordPath?: string;
 }

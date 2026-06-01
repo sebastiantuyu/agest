@@ -20,6 +20,21 @@ describe("defineConfig", () => {
     };
     expect(defineConfig(config)).toBe(config);
   });
+
+  it("preserves the areas block (extends / include / exclude)", () => {
+    const config = defineConfig({
+      areas: {
+        extends: ["agest/recommended"],
+        include: ["billing", { id: "refusal", minScenes: 10 }],
+        exclude: ["memory"],
+      },
+    });
+    expect(config.areas).toEqual({
+      extends: ["agest/recommended"],
+      include: ["billing", { id: "refusal", minScenes: 10 }],
+      exclude: ["memory"],
+    });
+  });
 });
 
 describe("loadConfig", () => {

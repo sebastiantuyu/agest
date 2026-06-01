@@ -67,6 +67,30 @@ describe("formatReport", () => {
     expect(output).toContain('tools: "search"');
   });
 
+  it("emits an areas block with per-area coverage", () => {
+    const output = formatReport({
+      ...minimalReport,
+      areaCoverage: [
+        { id: "refusal", scenes: 2, passed: 1, passRate: 0.5, trials: 2, trialPasses: 1, inCatalog: true, minScenes: 5 },
+        { id: "billing", scenes: 1, passed: 1, passRate: 1, trials: 1, trialPasses: 1, inCatalog: false },
+      ],
+      untaggedCount: 3,
+    });
+    expect(output).toContain("areas:");
+    expect(output).toContain('- id: "refusal"');
+    expect(output).toContain("success_rate: 0.5");
+    expect(output).toContain("scenes: 2");
+    expect(output).toContain("in_catalog: true");
+    expect(output).toContain("min_scenes: 5");
+    expect(output).toContain('- id: "billing"');
+    expect(output).toContain("in_catalog: false");
+    expect(output).toContain("untagged_scenes: 3");
+  });
+
+  it("omits the areas block when there is no area coverage", () => {
+    expect(formatReport(minimalReport)).not.toContain("areas:");
+  });
+
   it("lists failed cases with prompts and reasons", () => {
     const output = formatReport({
       ...minimalReport,

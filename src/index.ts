@@ -12,6 +12,7 @@ export type { AgestConfig, JudgeConfig, JudgeExecutor } from "./config";
 export type { LogLevel } from "./logger";
 export type { AgentExpectation, AgentMatchers } from "./assertions";
 export type { JudgeCriteria } from "./judge";
+export { CATALOG as areaCatalog, PRESETS as areaPresets, resolveAreas } from "./areas";
 export type {
   AgentExecutor,
   ExecutorOptions,
@@ -26,6 +27,11 @@ export type {
   TimelineEventKind,
   CostBreakdown,
   CostSource,
+  AreaSpec,
+  AreaCatalogEntry,
+  AreaCoverage,
+  SuiteAreaCoverage,
+  AreasConfig,
 } from "./types";
 
 export interface AgentOptions {

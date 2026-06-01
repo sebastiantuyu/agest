@@ -6,5 +6,8 @@ export default defineConfig({
     model: "openai/gpt-oss-120b",
   },
   turns: 3,
-  timeout: 35_000
+  timeout: 35_000,
+  areas: {
+    extends: ["agest/recommended"],
+  },
 });
