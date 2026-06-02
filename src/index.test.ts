@@ -22,7 +22,7 @@ vi.mock("./context", () => {
   };
 });
 
-import { scene, agent, _resetAutoRun } from "./index";
+import { scene, agent, _resetAutoRun, areaCatalog, areaPresets, resolveAreas } from "./index";
 import { setContext, getContext, AgentContext } from "./context";
 
 const mockedSetContext = vi.mocked(setContext);
@@ -38,6 +38,14 @@ beforeEach(() => {
 describe("scene(prompt)", () => {
   it("throws when called outside agent()", () => {
     expect(() => scene("test")).toThrow("scene() must be called inside an agent() callback");
+  });
+});
+
+describe("area exports", () => {
+  it("re-exports the area catalog, presets, and resolver", () => {
+    expect(areaCatalog.refusal).toBeDefined();
+    expect(areaPresets["agest/recommended"]).toEqual(Object.keys(areaCatalog));
+    expect(resolveAreas({ extends: ["agest/recommended"] }).optedIn.has("refusal")).toBe(true);
   });
 });
 

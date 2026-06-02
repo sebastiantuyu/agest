@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { getCommandArgs, parseRunArgs, aggregateRunSummary } from "./cli.js";
+import { getCommandArgs, parseRunArgs, aggregateRunSummary, KNOWN_COMMANDS } from "./cli.js";
+
+describe("KNOWN_COMMANDS", () => {
+  it("includes coverage alongside run/stats/usage/preview", () => {
+    expect([...KNOWN_COMMANDS].sort()).toEqual(["coverage", "preview", "run", "stats", "usage"]);
+  });
+});
 
 const rec = (over: Partial<Parameters<typeof aggregateRunSummary>[0][number]> = {}) => ({
   file: "a.test.ts",

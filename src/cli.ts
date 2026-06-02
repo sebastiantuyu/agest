@@ -9,6 +9,7 @@ import { join, dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { main as stats } from "./stats.js";
 import { main as usage } from "./usage.js";
+import { main as coverage } from "./coverage.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 import { c } from "./logger.js";
@@ -268,11 +269,25 @@ const COMMANDS: Command[] = [
     run: usage,
   },
   {
+    name: "coverage",
+    summary: "Browse capability-area coverage radars; ←/→ to switch runs, q to quit",
+    usage: [
+      `agest coverage --once                  # one-shot render of the latest run`,
+      `agest coverage --full                  # add per-suite + roll-up detail`,
+      `agest coverage --list                  # list recent runs (sweeps)`,
+      `agest coverage --run <sweepId>         # coverage for a specific run`,
+    ],
+    run: coverage,
+  },
+  {
     name: "preview",
     summary: "Generate an HTML report preview",
     run: preview,
   },
 ];
+
+/** Dispatchable command names, derived from the registry (single source). */
+export const KNOWN_COMMANDS = new Set(COMMANDS.map((cmd) => cmd.name));
 
 function printUsage() {
   const lines = ["", "  Usage: agest <command>", "", "  Commands:"];

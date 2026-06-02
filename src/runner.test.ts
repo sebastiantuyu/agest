@@ -117,6 +117,20 @@ describe("executeScene", () => {
       expect(executor).toHaveBeenCalledWith("test prompt", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
 
+    it("carries scene tags through to the single-run result", async () => {
+      const result = await executeScene(makeExecutor(), makeScene({ tags: ["refusal", "tool-use"] }));
+      expect(result.tags).toEqual(["refusal", "tool-use"]);
+    });
+
+    it("carries scene tags through to the multi-run result", async () => {
+      const result = await executeScene(
+        makeExecutor(),
+        makeScene({ tags: ["robustness"], runs: 2 }),
+      );
+      expect(result.tags).toEqual(["robustness"]);
+      expect(result.runs).toHaveLength(2);
+    });
+
     it("returns SceneResult with passed: true when no assertions", async () => {
       const result = await executeScene(makeExecutor(), makeScene());
       expect(result.passed).toBe(true);

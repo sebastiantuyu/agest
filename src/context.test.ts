@@ -116,6 +116,18 @@ describe("SceneBuilder", () => {
     expect(builder.toDefinition().turns).toBe(3);
   });
 
+  it("tags() sets tags, merges on repeat, and returns this", () => {
+    const builder = new SceneBuilder("p");
+    const returned = builder.tags("refusal", "safety");
+    expect(returned).toBe(builder);
+    builder.tags("tool-use");
+    expect(builder.toDefinition().tags).toEqual(["refusal", "safety", "tool-use"]);
+  });
+
+  it("toDefinition() omits tags when never set", () => {
+    expect(new SceneBuilder("p").toDefinition().tags).toBeUndefined();
+  });
+
   it("expect() pushes assertion and returns this", () => {
     const fn = vi.fn();
     const builder = new SceneBuilder("p");

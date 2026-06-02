@@ -77,6 +77,22 @@ export function formatReport(report: AgentReport<unknown>): string {
     }
   }
 
+  // Area coverage breakdown ("coverage for agent testing")
+  if (report.areaCoverage && report.areaCoverage.length > 0) {
+    lines.push(`    areas:`);
+    for (const a of report.areaCoverage) {
+      lines.push(`        - id: "${a.id}"`);
+      lines.push(`          success_rate: ${Number(a.passRate.toFixed(2))}`);
+      lines.push(`          scenes: ${a.scenes}`);
+      lines.push(`          trials: ${a.trials}`);
+      lines.push(`          in_catalog: ${a.inCatalog}`);
+      if (a.minScenes != null) lines.push(`          min_scenes: ${a.minScenes}`);
+    }
+    if (report.untaggedCount) {
+      lines.push(`    untagged_scenes: ${report.untaggedCount}`);
+    }
+  }
+
   // Statistical runs summary
   const withRuns = report.results.filter((r) => r.runs && r.runs.length > 1);
   if (withRuns.length > 0) {
