@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { defineConfig, loadConfig } from "./config";
+import { defineConfig, loadConfig } from "./config.js";
 
 describe("defineConfig", () => {
   it("returns the exact config object passed in", () => {

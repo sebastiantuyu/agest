@@ -1,7 +1,7 @@
 import { access, appendFile, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import type { AgentReport, CheckpointRecord, SceneResult, TimelineEvent } from "./types";
-import { resolveText } from "./resolve";
+import type { AgentReport, CheckpointRecord, SceneResult, TimelineEvent } from "./types.js";
+import { resolveText } from "./resolve.js";
 
 export function formatReport(report: AgentReport<unknown>): string {
   const lines: string[] = ["agent:"];

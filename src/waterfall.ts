@@ -1,5 +1,5 @@
-import type { TimelineEvent } from "./types";
-import { c } from "./logger";
+import type { TimelineEvent } from "./types.js";
+import { c } from "./logger.js";
 
 const BLOCK = "█";
 const THIN = "▏";

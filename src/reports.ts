@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { readdir, readFile } from "fs/promises";
 import { join, relative } from "path";
-import type { CheckpointRecord } from "./types";
+import type { CheckpointRecord } from "./types.js";
 
 export interface ParsedSuiteResult {
   name: string;

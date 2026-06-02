@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isObjectLike, isPlainObject, structuralContains } from "./match";
+import { isObjectLike, isPlainObject, structuralContains } from "./match.js";
 
 describe("isObjectLike", () => {
   it("is true for plain objects and class instances", () => {

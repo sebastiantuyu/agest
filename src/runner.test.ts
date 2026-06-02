@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
-import type { AgentResponse, SceneDefinition } from "./types";
-import { extractField, executeScene } from "./runner";
+import type { AgentResponse, SceneDefinition } from "./types.js";
+import { extractField, executeScene } from "./runner.js";
 
 vi.mock("./assertions", () => ({
   collectPendingJudgements: vi.fn().mockReturnValue([]),
@@ -12,8 +12,8 @@ vi.mock("./judge", () => ({
   callJudge: vi.fn(),
 }));
 
-import { collectPendingJudgements } from "./assertions";
-import { resolveJudgeExecutor, callJudge } from "./judge";
+import { collectPendingJudgements } from "./assertions.js";
+import { resolveJudgeExecutor, callJudge } from "./judge.js";
 
 const mockedCollect = vi.mocked(collectPendingJudgements);
 const mockedResolveJudge = vi.mocked(resolveJudgeExecutor);

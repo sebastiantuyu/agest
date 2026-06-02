@@ -5,8 +5,8 @@ vi.mock("./refusal", () => ({
   isRefusal: vi.fn(),
 }));
 
-import { expect as agestExpect, collectPendingJudgements } from "./assertions";
-import { isRefusal } from "./refusal";
+import { expect as agestExpect, collectPendingJudgements } from "./assertions.js";
+import { isRefusal } from "./refusal.js";
 
 const mockedIsRefusal = vi.mocked(isRefusal);
 

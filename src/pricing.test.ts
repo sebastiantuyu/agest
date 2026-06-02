@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { computeCost, lookupPrice, setPricingOverrides } from "./pricing";
+import { computeCost, lookupPrice, setPricingOverrides } from "./pricing/index.js";
 
 describe("lookupPrice", () => {
   beforeEach(() => setPricingOverrides(undefined));

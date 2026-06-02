@@ -1,18 +1,20 @@
-import type { AgentExecutor, AgentReport, HookFn } from "./types";
-import { AgentContext, SceneBuilder, setContext, getContext } from "./context";
-import { isStandardSchema, type StandardSchemaV1, type InferOutput } from "./schema";
+import type { AgentExecutor, AgentReport, HookFn } from "./types.js";
+import { AgentContext, SceneBuilder, setContext, getContext } from "./context.js";
+import { isStandardSchema, type StandardSchemaV1, type InferOutput } from "./schema.js";
 
-export { expect } from "./assertions";
-export type { StandardSchemaV1, InferOutput } from "./schema";
-export { logger } from "./logger";
-export { defineConfig } from "./config";
-export { createTrace, summarizeEvents } from "./adapters/tracing";
-export type { Trace } from "./adapters/tracing";
-export type { AgestConfig, JudgeConfig, JudgeExecutor } from "./config";
-export type { LogLevel } from "./logger";
-export type { AgentExpectation, AgentMatchers } from "./assertions";
-export type { JudgeCriteria } from "./judge";
-export { CATALOG as areaCatalog, PRESETS as areaPresets, resolveAreas } from "./areas";
+export { expect } from "./assertions.js";
+export type { StandardSchemaV1, InferOutput } from "./schema.js";
+export { logger } from "./logger.js";
+export { defineConfig } from "./config.js";
+export { createTrace, summarizeEvents } from "./adapters/tracing.js";
+export type { Trace } from "./adapters/tracing.js";
+export type { AgestConfig, JudgeConfig, JudgeExecutor } from "./config.js";
+export type { LogLevel } from "./logger.js";
+export type { AgentExpectation, AgentMatchers } from "./assertions.js";
+export type { JudgeCriteria } from "./judge.js";
+export { CATALOG as areaCatalog, PRESETS as areaPresets, resolveAreas } from "./areas.js";
+export type { AreaId } from "./areas.js";
+export type { AgestAreaRegistry, AreaTag } from "./area-tags.js";
 export type {
   AgentExecutor,
   ExecutorOptions,
@@ -32,7 +34,7 @@ export type {
   AreaCoverage,
   SuiteAreaCoverage,
   AreasConfig,
-} from "./types";
+} from "./types.js";
 
 export interface AgentOptions {
   name?: string;

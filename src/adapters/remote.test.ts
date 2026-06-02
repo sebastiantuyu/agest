@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { remote } from "./remote";
+import { remote } from "./remote.js";
 
 let mockFetch: ReturnType<typeof vi.fn>;
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { CATALOG, PRESETS, resolveAreas, computeAreaCoverage } from "./areas";
-import type { SceneResult } from "./types";
+import { CATALOG, PRESETS, resolveAreas, computeAreaCoverage } from "./areas.js";
+import type { SceneResult } from "./types.js";
 
 function scene(partial: Partial<SceneResult>): SceneResult {
   return {

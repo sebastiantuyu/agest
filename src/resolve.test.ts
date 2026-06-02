@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { AgentResponse } from "./types";
-import { serializeValue, resolveValue, resolveText, navigatePath } from "./resolve";
+import type { AgentResponse } from "./types.js";
+import { serializeValue, resolveValue, resolveText, navigatePath } from "./resolve.js";
 
 describe("serializeValue", () => {
   it("passes strings through untouched", () => {

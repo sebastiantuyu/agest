@@ -1,6 +1,6 @@
-import type { TimelineEvent, CostBreakdown } from "../types";
-import { computeCost } from "../pricing";
-import { logger } from "../logger";
+import type { TimelineEvent, CostBreakdown } from "../types.js";
+import { computeCost } from "../pricing/index.js";
+import { logger } from "../logger.js";
 
 type RunId = string;
 

@@ -1,5 +1,5 @@
 import path from "path";
-import type { AreasConfig } from "./types";
+import type { AreasConfig } from "./types.js";
 
 export type JudgeExecutor = (prompt: string) => Promise<string>;
 
