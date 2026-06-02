@@ -9,17 +9,17 @@ import type {
   HookFn,
   SceneDefinition,
   SceneResult,
-} from "./types";
-import { executeScene } from "./runner";
-import { resolveAreas, computeAreaCoverage } from "./areas";
-import { resolveText } from "./resolve";
-import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter";
-import { wilsonInterval } from "./reports";
-import { logger, c } from "./logger";
-import { loadConfig } from "./config";
-import { setPricingOverrides } from "./pricing";
-import { renderTerminalWaterfall } from "./waterfall";
-import type { StandardSchemaV1 } from "./schema";
+} from "./types.js";
+import { executeScene } from "./runner.js";
+import { resolveAreas, computeAreaCoverage } from "./areas.js";
+import { resolveText } from "./resolve.js";
+import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter.js";
+import { wilsonInterval } from "./reports.js";
+import { logger, c } from "./logger.js";
+import { loadConfig } from "./config.js";
+import { setPricingOverrides } from "./pricing/index.js";
+import { renderTerminalWaterfall } from "./waterfall.js";
+import type { StandardSchemaV1 } from "./schema.js";
 import { PromisePool } from "@supercharge/promise-pool";
 
 /**

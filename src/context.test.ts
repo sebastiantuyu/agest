@@ -37,10 +37,10 @@ vi.mock("./logger", () => ({
   },
 }));
 
-import { SceneBuilder, AgentContext, setContext, getContext, hashPromptOnly } from "./context";
-import { loadConfig } from "./config";
-import { executeScene } from "./runner";
-import { formatReport, appendCheckpoint, writeDiffEntry } from "./reporter";
+import { SceneBuilder, AgentContext, setContext, getContext, hashPromptOnly } from "./context.js";
+import { loadConfig } from "./config.js";
+import { executeScene } from "./runner.js";
+import { formatReport, appendCheckpoint, writeDiffEntry } from "./reporter.js";
 
 const mockedLoadConfig = vi.mocked(loadConfig);
 const mockedExecuteScene = vi.mocked(executeScene);

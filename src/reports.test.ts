@@ -15,7 +15,7 @@ import {
   ensureDimensions,
   type ParsedReport,
   type DiffEntry,
-} from "./reports";
+} from "./reports.js";
 
 // --- Pure function tests (no mocking) ---
 

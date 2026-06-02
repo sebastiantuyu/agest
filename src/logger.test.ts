@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
-import { c, logger } from "./logger";
+import { c, logger } from "./logger.js";
 
 const ESC = "\x1b";
 const RESET = `${ESC}[0m`;

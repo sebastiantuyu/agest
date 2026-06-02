@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { sweepKey, groupSweeps, mergeAreas, renderAreaRadar } from "./coverage";
-import type { AreaCoverage, CheckpointRecord } from "./types";
+import { sweepKey, groupSweeps, mergeAreas, renderAreaRadar } from "./coverage.js";
+import type { AreaCoverage, CheckpointRecord } from "./types.js";
 
 function rec(partial: Partial<CheckpointRecord>): CheckpointRecord {
   return {

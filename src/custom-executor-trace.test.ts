@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import type { AgentExecutor, AgentResponse } from "./types";
-import { createTrace } from "./adapters/tracing";
-import { executeScene } from "./runner";
-import { formatReport } from "./reporter";
+import type { AgentExecutor, AgentResponse } from "./types.js";
+import { createTrace } from "./adapters/tracing.js";
+import { executeScene } from "./runner.js";
+import { formatReport } from "./reporter.js";
 
 /**
  * Regression coverage for the vitalitas-style integration: a CUSTOM executor

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { renderTerminalWaterfall } from "./waterfall";
-import { parseScenes } from "./reports";
-import type { TimelineEvent } from "./types";
+import { renderTerminalWaterfall } from "./waterfall.js";
+import { parseScenes } from "./reports.js";
+import type { TimelineEvent } from "./types.js";
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 

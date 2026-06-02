@@ -1,5 +1,5 @@
-import type { AgentExecutor, AgentResponse, CostBreakdown, TimelineEvent } from "../types";
-import { createTracingHandle, summarizeEvents } from "./tracing";
+import type { AgentExecutor, AgentResponse, CostBreakdown, TimelineEvent } from "../types.js";
+import { createTracingHandle, summarizeEvents } from "./tracing.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Runnable = { invoke: (input: any, options?: any) => Promise<any> };

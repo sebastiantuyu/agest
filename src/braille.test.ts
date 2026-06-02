@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Braille, renderRadar } from "./braille";
+import { Braille, renderRadar } from "./braille.js";
 
 const isBraille = (s: string) => [...s].some((ch) => ch.charCodeAt(0) >= 0x2800 && ch.charCodeAt(0) <= 0x28ff);
 

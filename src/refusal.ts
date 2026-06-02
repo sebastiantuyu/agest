@@ -1,4 +1,4 @@
-import type { AgentResponse } from "./types";
+import type { AgentResponse } from "./types.js";
 
 const REFUSAL_PATTERNS = [
   // Explicit inability

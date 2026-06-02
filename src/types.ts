@@ -1,4 +1,4 @@
-import type { StandardSchemaV1 } from "./schema";
+import type { StandardSchemaV1 } from "./schema.js";
 
 export interface ExecutorOptions {
   signal?: AbortSignal;

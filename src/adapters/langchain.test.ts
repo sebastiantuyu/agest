@@ -7,7 +7,7 @@ vi.mock("@langchain/core/messages", () => ({
   },
 }));
 
-import { langchain } from "./langchain";
+import { langchain } from "./langchain.js";
 
 beforeEach(() => {
   vi.clearAllMocks();

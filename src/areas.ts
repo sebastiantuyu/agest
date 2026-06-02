@@ -5,7 +5,7 @@ import type {
   AreasConfig,
   SceneResult,
   SuiteAreaCoverage,
-} from "./types";
+} from "./types.js";
 
 /**
  * "Coverage for agent testing." Scenes are tagged with capability AREAS; the
