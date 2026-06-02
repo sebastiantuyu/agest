@@ -37,10 +37,13 @@ vi.mock("./logger", () => ({
   },
 }));
 
-import { SceneBuilder, AgentContext, setContext, getContext, hashPromptOnly } from "./context";
+import { SceneBuilder, AgentContext, setContext, getContext, hashPromptOnly, firstLine, indentBlock } from "./context";
 import { loadConfig } from "./config";
 import { executeScene } from "./runner";
 import { formatReport, appendCheckpoint, writeDiffEntry } from "./reporter";
+import { logger } from "./logger";
+
+const mockedLoggerInfo = vi.mocked(logger.info);
 
 const mockedLoadConfig = vi.mocked(loadConfig);
 const mockedExecuteScene = vi.mocked(executeScene);
@@ -73,6 +76,36 @@ describe("hashPromptOnly", () => {
 
   it("returns different hash for different input", () => {
     expect(hashPromptOnly("hello")).not.toBe(hashPromptOnly("world"));
+  });
+});
+
+describe("firstLine", () => {
+  it("returns the first line of a multi-line message, trimmed", () => {
+    expect(firstLine("  headline  \nrest\nmore")).toBe("headline");
+  });
+
+  it("returns a single-line message unchanged", () => {
+    expect(firstLine("just one line")).toBe("just one line");
+  });
+
+  it("caps an over-long first line with an ellipsis", () => {
+    const out = firstLine("x".repeat(300), 50);
+    expect(out).toHaveLength(50);
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("handles an empty string", () => {
+    expect(firstLine("")).toBe("");
+  });
+});
+
+describe("indentBlock", () => {
+  it("prefixes every line so a block nests under the prefix", () => {
+    expect(indentBlock("a\nb\nc", "  ")).toBe("  a\n  b\n  c");
+  });
+
+  it("indents a single line", () => {
+    expect(indentBlock("solo", ">>")).toBe(">>solo");
   });
 });
 
@@ -219,6 +252,56 @@ describe("AgentContext", () => {
       const report = await ctx.execute();
       expect(report.failedCases).toContain("failed-prompt");
       expect(report.failedCaseErrors["failed-prompt"]).toBe("bad response");
+    });
+
+    it("prints a consolidated failure recap with the full multi-line error", async () => {
+      const multiline = "generatePlan threw: exhausted 3 attempts\n  line two\n  line three";
+      mockedExecuteScene.mockResolvedValue({
+        prompt: "maria-comida-only",
+        response: { text: "" },
+        duration: 100,
+        passed: false,
+        error: multiline,
+      });
+
+      const ctx = new AgentContext(vi.fn(), "planner agent");
+      ctx.registerScene("maria-comida-only");
+      await ctx.execute();
+
+      const out = mockedLoggerInfo.mock.calls.map((c) => c[0]).join("\n");
+      // Recap header with count
+      expect(out).toContain("Failures (1)");
+      // Scene is attributed by agent name › scene prompt
+      expect(out).toContain("planner agent › maria-comida-only");
+      // Every line of the error survives, indented under the scene
+      expect(out).toContain("        generatePlan threw: exhausted 3 attempts");
+      expect(out).toContain("          line two");
+      expect(out).toContain("          line three");
+    });
+
+    it("inline FAIL line shows only the error headline (first line)", async () => {
+      mockedExecuteScene.mockResolvedValue({
+        prompt: "p",
+        response: { text: "" },
+        duration: 100,
+        passed: false,
+        error: "headline reason\ndetail that should NOT be on the inline line",
+      });
+
+      const ctx = new AgentContext(vi.fn());
+      ctx.registerScene("p");
+      await ctx.execute();
+
+      const inline = mockedLoggerInfo.mock.calls
+        .map((c) => String(c[0]))
+        .find((line) => line.includes("... FAIL"));
+      // The line immediately after the FAIL line carries the headline only.
+      const headlineLine = mockedLoggerInfo.mock.calls
+        .map((c) => String(c[0]))
+        .find((line) => line.includes("headline reason"));
+      expect(inline).toBeDefined();
+      expect(headlineLine).toBeDefined();
+      expect(headlineLine).not.toContain("detail that should NOT");
     });
 
     it("computes token averages when metadata has tokens", async () => {
