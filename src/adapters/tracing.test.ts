@@ -7,9 +7,9 @@ vi.mock("@langchain/core/messages", () => ({
   },
 }));
 
-import { langchain } from "./langchain";
-import { createTrace, summarizeEvents } from "./tracing";
-import type { TimelineEvent } from "../types";
+import { langchain } from "./langchain.js";
+import { createTrace, summarizeEvents } from "./tracing.js";
+import type { TimelineEvent } from "../types.js";
 
 /**
  * Build a fake LangGraph runnable whose `invoke` calls each callback in

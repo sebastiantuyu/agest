@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_PATTERN, discoverTestFiles } from "./discover";
+import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 
 let root: string;
 

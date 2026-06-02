@@ -22,8 +22,8 @@ vi.mock("./context", () => {
   };
 });
 
-import { scene, agent, _resetAutoRun, areaCatalog, areaPresets, resolveAreas } from "./index";
-import { setContext, getContext, AgentContext } from "./context";
+import { scene, agent, _resetAutoRun, areaCatalog, areaPresets, resolveAreas } from "./index.js";
+import { setContext, getContext, AgentContext } from "./context.js";
 
 const mockedSetContext = vi.mocked(setContext);
 const mockedGetContext = vi.mocked(getContext);

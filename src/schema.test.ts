@@ -6,7 +6,7 @@ import {
   validateSync,
   validateAgainstSchema,
   type StandardSchemaV1,
-} from "./schema";
+} from "./schema.js";
 
 const Plan = z.object({
   plan_items: z.array(z.object({ step: z.string() })),

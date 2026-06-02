@@ -7,13 +7,13 @@ import type {
   SceneDefinition,
   SceneResult,
   TimelineEvent,
-} from "./types";
-import type { JudgeConfig } from "./config";
-import { collectPendingJudgements } from "./assertions";
-import { callJudge, resolveJudgeExecutor } from "./judge";
-import { resolveValue, resolveText, serializeValue, navigatePath } from "./resolve";
-import { validateAgainstSchema } from "./schema";
-import { wilsonInterval } from "./reports";
+} from "./types.js";
+import type { JudgeConfig } from "./config.js";
+import { collectPendingJudgements } from "./assertions.js";
+import { callJudge, resolveJudgeExecutor } from "./judge.js";
+import { resolveValue, resolveText, serializeValue, navigatePath } from "./resolve.js";
+import { validateAgainstSchema } from "./schema.js";
+import { wilsonInterval } from "./reports.js";
 
 const DEFAULT_SCENE_TIMEOUT = 10_000;
 

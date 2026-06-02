@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isRefusal } from "./refusal";
+import { isRefusal } from "./refusal.js";
 
 describe("isRefusal", () => {
   describe("object with .refusal property", () => {

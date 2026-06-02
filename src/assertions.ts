@@ -1,9 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRefusal } from "./refusal";
-import { serializeValue } from "./resolve";
-import { isObjectLike, isPlainObject, structuralContains } from "./match";
-import { validateSync, type StandardSchemaV1 } from "./schema";
-import type { JudgeCriteria } from "./judge";
+import { isRefusal } from "./refusal.js";
+import { serializeValue } from "./resolve.js";
+import { isObjectLike, isPlainObject, structuralContains } from "./match.js";
+import { validateSync, type StandardSchemaV1 } from "./schema.js";
+import type { JudgeCriteria } from "./judge.js";
 
 export interface PendingJudgement {
   value: unknown;

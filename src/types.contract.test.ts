@@ -1,15 +1,15 @@
 import { describe, it, expectTypeOf } from "vitest";
-import { agent } from "./index";
-import { SceneBuilder } from "./context";
-import type { InferOutput, StandardSchemaV1 } from "./schema";
-import { executeScene, extractField } from "./runner";
+import { agent } from "./index.js";
+import { SceneBuilder } from "./context.js";
+import type { InferOutput, StandardSchemaV1 } from "./schema.js";
+import { executeScene, extractField } from "./runner.js";
 import type {
   AgentExecutor,
   AgentResponse,
   RunResult,
   SceneResult,
   AgentReport,
-} from "./types";
+} from "./types.js";
 
 /**
  * Type-level guards. These assert the generic `T` is THREADED through every

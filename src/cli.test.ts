@@ -2,8 +2,15 @@ import { describe, it, expect } from "vitest";
 import { getCommandArgs, parseRunArgs, aggregateRunSummary, KNOWN_COMMANDS } from "./cli.js";
 
 describe("KNOWN_COMMANDS", () => {
-  it("includes coverage alongside run/stats/usage/preview", () => {
-    expect([...KNOWN_COMMANDS].sort()).toEqual(["coverage", "preview", "run", "stats", "usage"]);
+  it("includes coverage and typegen alongside run/stats/usage/preview", () => {
+    expect([...KNOWN_COMMANDS].sort()).toEqual([
+      "coverage",
+      "preview",
+      "run",
+      "stats",
+      "typegen",
+      "usage",
+    ]);
   });
 });
 

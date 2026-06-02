@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { AgentReport } from "./types";
+import type { AgentReport } from "./types.js";
 
 vi.mock("fs/promises", () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
@@ -9,8 +9,8 @@ vi.mock("fs/promises", () => ({
 }));
 
 import { join } from "path";
-import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter";
-import type { CheckpointRecord } from "./types";
+import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter.js";
+import type { CheckpointRecord } from "./types.js";
 import { mkdir, writeFile, appendFile, access } from "fs/promises";
 
 const mockedMkdir = vi.mocked(mkdir);

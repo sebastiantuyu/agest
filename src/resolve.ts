@@ -1,4 +1,4 @@
-import type { AgentResponse } from "./types";
+import type { AgentResponse } from "./types.js";
 
 /**
  * Serialize an arbitrary agent value to the string view the judge model and

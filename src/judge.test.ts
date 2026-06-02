@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolveJudgeExecutor, callJudge } from "./judge";
-import type { JudgeConfig, JudgeExecutor } from "./config";
+import { resolveJudgeExecutor, callJudge } from "./judge.js";
+import type { JudgeConfig, JudgeExecutor } from "./config.js";
 
 describe("resolveJudgeExecutor", () => {
   it("returns config.executor when provided", () => {

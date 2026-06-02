@@ -1,4 +1,4 @@
-import type { AgentExecutor, AgentResponse, ExecutorOptions } from "../types";
+import type { AgentExecutor, AgentResponse, ExecutorOptions } from "../types.js";
 
 export interface RemoteAdapterOptions {
   /** HTTP headers (e.g. Authorization) */

@@ -1,5 +1,5 @@
-import type { JudgeResult, JudgeVerdict } from "./types";
-import type { JudgeConfig, JudgeExecutor } from "./config";
+import type { JudgeResult, JudgeVerdict } from "./types.js";
+import type { JudgeConfig, JudgeExecutor } from "./config.js";
 
 const DEFAULT_JUDGE_MODEL = "openai/gpt-oss-20b";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
