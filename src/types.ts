@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "./schema.js";
+import type { AreaTag } from "./area-tags.js";
 
 export interface ExecutorOptions {
   signal?: AbortSignal;
@@ -86,7 +87,7 @@ export interface SceneDefinition {
   runs?: number;
   suite?: string;
   /** Capability areas this scene exercises (cross-cutting, many-to-many). */
-  tags?: string[];
+  tags?: AreaTag[];
   /** Standard Schema validated against the native value before user assertions. */
   schema?: StandardSchemaV1;
 }

@@ -13,6 +13,8 @@ export type { LogLevel } from "./logger.js";
 export type { AgentExpectation, AgentMatchers } from "./assertions.js";
 export type { JudgeCriteria } from "./judge.js";
 export { CATALOG as areaCatalog, PRESETS as areaPresets, resolveAreas } from "./areas.js";
+export type { AreaId } from "./areas.js";
+export type { AgestAreaRegistry, AreaTag } from "./area-tags.js";
 export type {
   AgentExecutor,
   ExecutorOptions,

@@ -5,6 +5,10 @@
 .reports/
 .diff/
 
+# generated area-type augmentation (consumers commit theirs; the library itself
+# has no need to constrain its own internal tests — see src/typegen.ts)
+agest-env.d.ts
+
 # Optional npm cache directory
 .npm
 

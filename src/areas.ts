@@ -27,7 +27,7 @@ const BUCKET_NO_SUITE = "(no suite)";
  * areas whose failures are costly (refusal, correctness, robustness) demand
  * more breadth before their pass rate is trustworthy.
  */
-export const CATALOG: Record<string, AreaCatalogEntry> = {
+const CATALOG_DATA = {
   refusal: {
     id: "refusal",
     description: "Refuses what it should — response.refusal / .expect('refusal').",
@@ -63,7 +63,21 @@ export const CATALOG: Record<string, AreaCatalogEntry> = {
     description: "Stable under repetition — multi-run .runs(n) + Wilson significance.",
     minScenes: 5,
   },
-};
+} satisfies Record<string, AreaCatalogEntry>;
+
+/**
+ * Literal union of the canonical catalog ids — derived from CATALOG_DATA, never
+ * duplicated. Drives the `.tags()` autocomplete surface (see area-tags.ts).
+ */
+export type AreaId = keyof typeof CATALOG_DATA;
+
+/**
+ * Permissive runtime view of the catalog. Stays `Record<string, …>` so the
+ * resolver and coverage command can index it with arbitrary string ids (config
+ * `include` entries, persisted/observed tags) — only the *type* `AreaId` keeps
+ * the literal keys; the value is string-indexable.
+ */
+export const CATALOG: Record<string, AreaCatalogEntry> = CATALOG_DATA;
 
 /** Composable presets. `extends` references these by id; unknown ids throw. */
 export const PRESETS: Record<string, string[]> = {

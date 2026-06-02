@@ -10,6 +10,7 @@ import type {
   SceneDefinition,
   SceneResult,
 } from "./types.js";
+import type { AreaTag } from "./area-tags.js";
 import { executeScene } from "./runner.js";
 import { resolveAreas, computeAreaCoverage } from "./areas.js";
 import { resolveText } from "./resolve.js";
@@ -56,8 +57,10 @@ export class SceneBuilder<T = string> {
   /**
    * Tag this scene with the capability areas it exercises (cross-cutting,
    * many-to-many) — the basis for `agest coverage`. Repeated calls merge.
+   * `AreaTag` is any string until you generate `agest-env.d.ts` (see
+   * `agest typegen`), after which it narrows to your configured area set.
    */
-  tags(...names: string[]): this {
+  tags(...names: AreaTag[]): this {
     this._tags = [...(this._tags ?? []), ...names];
     return this;
   }

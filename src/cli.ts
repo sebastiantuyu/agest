@@ -12,6 +12,7 @@ import { main as usage } from "./usage.js";
 import { main as coverage } from "./coverage.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
+import { main as typegen, generateAreaTypesOnRun } from "./typegen.js";
 import { c } from "./logger.js";
 
 /**
@@ -84,10 +85,9 @@ async function run(args: string[]) {
     process.exit(1);
   }
 
-  // Each child appends a summary record here; the parent reads them back for
-  // the aggregate footer. A unique dir keeps concurrent `agest run`s isolated.
+  await generateAreaTypesOnRun(process.cwd());
+
   const summaryFile = join(mkdtempSync(join(tmpdir(), "agest-")), "summary.jsonl");
-  // One sweepId per invocation groups every checkpoint row from this run.
   const sweepId = randomUUID();
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
@@ -103,7 +103,6 @@ async function run(args: string[]) {
     ...(record ? { AGEST_RECORD: "1" } : {}),
   };
 
-  // One run header for the whole sweep — children suppress their per-file one.
   if (files.length > 1) {
     console.log(c.bold(`\nRunning ${files.length} test files...`));
   }
@@ -247,6 +246,15 @@ const COMMANDS: Command[] = [
       `agest run tests/ --record              # also save a full per-scene snapshot`,
     ],
     run: run,
+  },
+  {
+    name: "typegen",
+    summary: "Generate agest-env.d.ts so scene().tags() checks your configured areas",
+    usage: [
+      `agest typegen                          # (re)write agest-env.d.ts from config`,
+      `agest typegen --check                  # CI: exit non-zero if missing/stale`,
+    ],
+    run: typegen,
   },
   {
     name: "stats",
