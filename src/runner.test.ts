@@ -305,6 +305,79 @@ describe("executeScene", () => {
     });
   });
 
+  describe("assertion records", () => {
+    it("records a passing entry per assertion (no actualValue on green)", async () => {
+      const scene = makeScene({
+        assertions: [
+          { field: "response", fn: () => {} },
+          { field: "refusal", fn: () => {} },
+        ],
+      });
+      const result = await executeScene(makeExecutor(), scene);
+      expect(result.assertions).toEqual([
+        { field: "response", passed: true },
+        { field: "refusal", passed: true },
+      ]);
+    });
+
+    it("records the failing assertion with message + actualValue, and stops", async () => {
+      const scene = makeScene({
+        assertions: [
+          { field: "model", fn: () => { throw new Error("nope"); } },
+          { field: "response", fn: () => {} },
+        ],
+      });
+      const result = await executeScene(
+        makeExecutor({ text: "ok", metadata: { model: "gpt-4" } }),
+        scene,
+      );
+      expect(result.assertions).toEqual([
+        { field: "model", passed: false, message: "nope", actualValue: "gpt-4" },
+      ]);
+    });
+
+    it("uses a sentinel for the whole value/text fields instead of duplicating them", async () => {
+      const scene = makeScene({
+        assertions: [{ field: "value", fn: () => { throw new Error("bad shape"); } }],
+      });
+      const result = await executeScene(makeExecutor({ value: { a: 1 } } as unknown as AgentResponse), scene);
+      expect(result.assertions?.[0]).toMatchObject({
+        field: "value",
+        passed: false,
+        actualValue: "<see resolvedValue>",
+      });
+    });
+
+    it("records a synthetic schema entry on a schema failure", async () => {
+      const Plan = z.object({ plan_items: z.array(z.object({ step: z.string() })) });
+      const scene = makeScene({ schema: Plan });
+      const executor = vi.fn().mockResolvedValue({ value: { plan_items: [{ step: 42 }] } });
+      const result = await executeScene(executor, scene);
+      const schemaRec = result.assertions?.find((a) => a.field === "schema");
+      expect(schemaRec?.passed).toBe(false);
+      expect(schemaRec?.message).toContain("plan_items.0.step");
+    });
+
+    it("surfaces the failing run's assertions for a multi-run scene", async () => {
+      // 2 of 3 runs fail → scene fails; surfaced assertions must be the failing run's.
+      let call = 0;
+      const executor = vi.fn().mockImplementation(async () => {
+        call += 1;
+        return { text: "ok", metadata: { model: call <= 2 ? "bad" : "good" } };
+      });
+      const scene = makeScene({
+        runs: 3,
+        assertions: [{ field: "model", fn: (v: string) => { if (v === "bad") throw new Error("bad model"); } }],
+      });
+      const result = await executeScene(executor, scene);
+      expect(result.passed).toBe(false); // 1/3 passed → minority
+      expect(result.error).toBe("bad model");
+      expect(result.assertions).toEqual([
+        { field: "model", passed: false, message: "bad model", actualValue: "bad" },
+      ]);
+    });
+  });
+
   describe("schema validation", () => {
     const Plan = z.object({
       plan_items: z.array(z.object({ step: z.string() })),

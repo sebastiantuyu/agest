@@ -153,12 +153,23 @@ export interface JudgeResult {
   criteria: string;
 }
 
+/** One assertion (or the schema check) evaluated against a scene's response. */
+export interface AssertionRecord {
+  field: string;
+  passed: boolean;
+  message?: string;
+  /** Safe-serialized input the predicate received; captured on failure only. */
+  actualValue?: string;
+}
+
 export interface RunResult<T = string> {
   passed: boolean;
   error?: string;
   response: AgentResponse<T>;
   duration: number;
   judgement?: JudgeResult;
+  /** Per-assertion (+ schema) records evaluated during this run. */
+  assertions?: AssertionRecord[];
 }
 
 export interface SceneResult<T = string> {
@@ -171,6 +182,8 @@ export interface SceneResult<T = string> {
   suite?: string;
   /** Capability areas this scene exercises (carried from the definition). */
   tags?: string[];
+  /** Per-assertion (+ schema) records for the representative run. */
+  assertions?: AssertionRecord[];
   runs?: RunResult<T>[];
   passRate?: number;
   statisticalSignificance?: number;
@@ -253,4 +266,27 @@ export interface CheckpointRecord {
   untaggedCount?: number;
   /** Relative path to the full YAML snapshot, set only when run with --record. */
   recordPath?: string;
+  /** Relative path to this run's per-case artifact dir, when written. */
+  artifactsDir?: string;
+}
+
+/** Per-case artifact written for every scene (pass and fail). See `buildCaseArtifact`. */
+export interface CaseArtifact {
+  prompt: string;
+  suite?: string;
+  passed: boolean;
+  /** The agent's native output (resolveValue). */
+  resolvedValue: unknown;
+  /** The serialized text view (resolveText). */
+  text: string;
+  judge?: JudgeResult;
+  assertions: AssertionRecord[];
+  error?: string;
+  tokens?: { input: number; output: number };
+  costUsd?: number;
+  durationMs: number;
+  /** Multi-run only. */
+  passRate?: number;
+  significance?: number;
+  runBreakdown?: Array<{ index: number; passed: boolean; error?: string }>;
 }
