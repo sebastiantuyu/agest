@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "crypto";
 import { appendFileSync } from "node:fs";
-import { relative } from "node:path";
+import { join, relative } from "node:path";
 import type {
   AgentExecutor,
   AgentReport,
@@ -15,6 +15,7 @@ import { executeScene } from "./runner.js";
 import { resolveAreas, computeAreaCoverage } from "./areas.js";
 import { resolveText } from "./resolve.js";
 import { formatReport, writeSnapshot, appendCheckpoint, writeDiffEntry } from "./reporter.js";
+import { writeRunArtifacts } from "./artifacts.js";
 import { wilsonInterval } from "./reports.js";
 import { logger, c } from "./logger.js";
 import { loadConfig } from "./config.js";
@@ -456,6 +457,21 @@ export class AgentContext<T = string> {
       logger.info(`${c.dim("Snapshot saved to:")} ${c.cyan(recordPath)}`);
     }
 
+    // Per-case artifacts: the resolved response + per-assertion detail for EVERY
+    // scene (pass and fail), so a paid run stays inspectable later without a
+    // re-run. The sweep folder is created by the parent under `agest run`
+    // (AGEST_SWEEP_DIR); a standalone `tsx foo.test.ts` gets its own local one.
+    // Best-effort — never let writing break a run (mirrors the checkpoint below).
+    let artifactsDir: string | undefined;
+    const sweepDir =
+      process.env.AGEST_SWEEP_DIR ??
+      join(process.cwd(), ".reports", "sweeps", `local__${runId}`);
+    try {
+      artifactsDir = await writeRunArtifacts(sweepDir, runId, report);
+    } catch {
+      /* ignore */
+    }
+
     const checkpoint: CheckpointRecord = {
       runId,
       sweepId,
@@ -482,6 +498,7 @@ export class AgentContext<T = string> {
       areasOptedIn,
       untaggedCount,
       recordPath,
+      artifactsDir,
     };
 
     // Persist the checkpoint the moment THIS agent() completes — straight to the

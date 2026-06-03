@@ -1,6 +1,7 @@
 import type {
   AgentExecutor,
   AgentResponse,
+  AssertionRecord,
   CostSource,
   JudgeResult,
   RunResult,
@@ -16,6 +17,24 @@ import { validateAgainstSchema } from "./schema.js";
 import { wilsonInterval } from "./reports.js";
 
 const DEFAULT_SCENE_TIMEOUT = 10_000;
+
+/** Cap a captured `actualValue` so a large structured input can't bloat artifacts. */
+const ACTUAL_VALUE_CAP = 2_000;
+
+function clip(s: string, max = ACTUAL_VALUE_CAP): string {
+  return s.length > max ? s.slice(0, max) + `… (+${s.length - max} chars)` : s;
+}
+
+/**
+ * The serialized input an assertion's predicate received, for the failure record.
+ * The top-level value/text fields are already carried whole on the case artifact,
+ * so dump a sentinel instead of duplicating the (potentially large) value.
+ */
+function clipForField(field: string, value: unknown): string {
+  if (field === "value" || field === "response") return "<see resolvedValue>";
+  if (field === "text") return "<see text>";
+  return clip(serializeValue(value));
+}
 
 /**
  * Extract a named field from an agent response for assertion.
@@ -93,6 +112,7 @@ async function executeSingleRun<T>(
   let passed = true;
   let error: string | undefined;
   let judgement: JudgeResult | undefined;
+  const assertions: AssertionRecord[] = [];
 
   // Schema validation runs first — a structural failure is the headline. Skip
   // refusals (which legitimately won't match the output shape) and empty values.
@@ -103,18 +123,34 @@ async function executeSingleRun<T>(
       if (!outcome.ok) {
         passed = false;
         error = `Schema validation failed — ${outcome.message}`;
+        // Schema has no other carrier in the artifact — record it as a synthetic
+        // assertion so a schema failure isn't an empty `assertions[]`.
+        assertions.push({
+          field: "schema",
+          passed: false,
+          message: outcome.message,
+          actualValue: clip(serializeValue(value)),
+        });
       }
     }
   }
 
   for (const assertion of scene.assertions) {
     if (!passed) break;
+    const value = extractField(response, assertion.field);
     try {
-      const value = extractField(response, assertion.field);
       assertion.fn(value);
+      // Green records stay lean — no actualValue (the response is carried whole).
+      assertions.push({ field: assertion.field, passed: true });
     } catch (err) {
       passed = false;
       error = (err as Error).message;
+      assertions.push({
+        field: assertion.field,
+        passed: false,
+        message: error,
+        actualValue: clipForField(assertion.field, value),
+      });
       break;
     }
   }
@@ -147,7 +183,7 @@ async function executeSingleRun<T>(
     }
   }
 
-  return { passed, error, response, duration, judgement };
+  return { passed, error, response, duration, judgement, assertions };
 }
 
 export async function executeScene<T = string>(
@@ -175,6 +211,7 @@ export async function executeScene<T = string>(
       passed: run.passed,
       error: run.error,
       judgement: run.judgement,
+      assertions: run.assertions,
       suite: scene.suite,
       tags: scene.tags,
       tokens: tokens ? { input: tokens.input, output: tokens.output } : undefined,
@@ -203,6 +240,12 @@ export async function executeScene<T = string>(
   const error = overallPassed
     ? undefined
     : failedRuns[0]?.error ?? "Majority of runs failed";
+
+  // Representative run for the surfaced detail (response/judgement/assertions).
+  // Aligned with `error` above: the first failing run when the scene failed,
+  // else the last run — so the artifact's assertions never describe a passing
+  // run next to a failing run's error.
+  const repRun = overallPassed ? lastRun : (failedRuns[0] ?? lastRun);
 
   // Aggregate tokens, cost, events across runs
   let inputTokens = 0;
@@ -238,11 +281,12 @@ export async function executeScene<T = string>(
 
   return {
     prompt: scene.prompt,
-    response: lastRun.response,
+    response: repRun.response,
     duration: totalDuration,
     passed: overallPassed,
     error,
-    judgement: lastRun.judgement,
+    judgement: repRun.judgement,
+    assertions: repRun.assertions,
     suite: scene.suite,
     tags: scene.tags,
     runs,

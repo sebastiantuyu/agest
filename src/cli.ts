@@ -2,7 +2,7 @@
 
 import { spawn } from "child_process";
 import { fileURLToPath } from "node:url";
-import { realpathSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -13,6 +13,7 @@ import { main as coverage } from "./coverage.js";
 import { main as preview } from "./preview.js";
 import { DEFAULT_PATTERN, discoverTestFiles } from "./discover.js";
 import { main as typegen, generateAreaTypesOnRun } from "./typegen.js";
+import { finalizeSweep, gitInfo, agestVersion } from "./artifacts.js";
 import { c } from "./logger.js";
 
 /**
@@ -89,10 +90,24 @@ async function run(args: string[]) {
 
   const summaryFile = join(mkdtempSync(join(tmpdir(), "agest-")), "summary.jsonl");
   const sweepId = randomUUID();
+
+  // One immutable, self-contained folder per sweep. Created ONCE here and passed
+  // to every child via AGEST_SWEEP_DIR — children write their per-case artifacts
+  // into it (the timestamp is encoded in the name so children never re-derive it).
+  const startedAt = new Date().toISOString();
+  const sweepDir = join(
+    process.cwd(),
+    ".reports",
+    "sweeps",
+    `${startedAt.replace(/[:.]/g, "-")}__${sweepId}`,
+  );
+  mkdirSync(sweepDir, { recursive: true });
+
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
     AGEST_SUMMARY_FILE: summaryFile,
     AGEST_SWEEP_ID: sweepId,
+    AGEST_SWEEP_DIR: sweepDir,
     // Lets each child know it's part of a multi-file sweep so it can drop its
     // own "Running N scene…" header (the parent prints one below instead).
     AGEST_FILE_COUNT: String(files.length),
@@ -129,6 +144,24 @@ async function run(args: string[]) {
 
   const records = readSummary(summaryFile);
   printRunSummary(records, files.length);
+
+  // Seal the sweep: sweep-level manifest (provenance + totals), the concatenated
+  // FAILURES.md rollup, and the `latest` pointer. Children already wrote their
+  // per-run artifacts into sweepDir; this is the parent's closing pass.
+  const summary = aggregateRunSummary(records, files.length);
+  await finalizeSweep(sweepDir, {
+    sweepId,
+    timestamp: startedAt,
+    agestVersion: agestVersion(),
+    git: gitInfo(),
+    files: files.length,
+    totalCases: summary.totalCases,
+    casesPassed: summary.casesPassed,
+    casesFailed: summary.casesFailed,
+    durationMs: summary.duration,
+    totalCostUsd: summary.cost,
+  });
+
   try {
     rmSync(dirname(summaryFile), { recursive: true, force: true });
   } catch {
