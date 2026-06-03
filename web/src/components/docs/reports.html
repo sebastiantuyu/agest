@@ -1,0 +1,118 @@
+    <!-- Charts Section -->
+    <section id="reports" class="max-w-6xl mx-auto px-6 pb-24 reveal" aria-labelledby="visual-reports">
+      <div class="mb-8">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="sec-num">§03</span>
+          <span class="sec-rule"></span>
+          <span class="font-mono text-[11px] text-[var(--ink-faint)] hidden sm:inline">coverage · cost · confidence</span>
+        </div>
+        <div class="flex justify-start"><pre class="ascii-h" aria-hidden="true">                        _
+  _ _ ___ _ __  ___ _ _| |_ ___
+ | '_/ -_) '_ \/ _ \ '_|  _(_-&lt;
+ |_| \___| .__/\___/_|  \__/__/
+         |_|                   </pre></div>
+        <h2 id="visual-reports" class="sr-only">Reports</h2>
+      </div>
+      <p class="text-[13.5px] text-[var(--ink-dim)] mb-8 max-w-2xl">The coverage radar is drawn with the exact braille
+        pixel renderer the CLI ships with. Compare models, track prompt evolution, and find the accuracy-vs-cost sweet
+        spot — or keep the whole thing terminal-native.</p>
+
+      <!-- Braille pixel radar — the real `agest coverage --radar` output, rendered in-browser -->
+      <div class="win crt phosphor rounded-xl overflow-hidden mb-4">
+        <div class="win-bar px-4 py-2.5 flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <div class="dot bg-zinc-700"></div>
+            <div class="dot bg-zinc-700"></div>
+            <div class="dot bg-zinc-700"></div>
+          </div>
+          <span class="font-mono text-[11px] text-[var(--phos-label)]/90 ml-2">$ agest coverage --radar</span>
+          <span class="font-mono text-[10px] text-[var(--ink-faint)] ml-auto hidden sm:inline">braille · 2×4 dot canvas</span>
+        </div>
+        <div class="flex justify-center px-5 py-7 overflow-x-auto phosphor-glow">
+          <pre id="braille-radar" class="braille" aria-label="Capability coverage radar rendered as braille pixels">loading radar…</pre>
+        </div>
+        <div class="border-t border-[var(--line)] px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[11px] text-[var(--ink-faint)]">
+          <span class="flex items-center gap-2"><span class="legend-dot" style="background:var(--phos-grid)"></span>grid · rings + spokes</span>
+          <span class="flex items-center gap-2"><span class="legend-dot" style="background:var(--phos-data)"></span>spoke length = pass rate</span>
+          <span class="flex items-center gap-2"><span class="legend-dot" style="background:var(--phos-label)"></span>capability area</span>
+          <span class="ml-auto hidden md:inline">7 axes · identical renderer to the CLI</span>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4 mb-4">
+        <div class="panel rounded-xl p-5">
+          <div class="flex items-center justify-between mb-5">
+            <span class="font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--ink-faint)]">success rate by model</span>
+            <div class="flex gap-1.5">
+              <span class="dim-tab px-2.5 py-1 text-[10px] font-mono rounded bg-white/10 text-[var(--ink)]">prompt v1</span>
+              <span class="dim-tab px-2.5 py-1 text-[10px] font-mono rounded bg-white/[0.03] text-[var(--ink-faint)]">prompt v2</span>
+            </div>
+          </div>
+          <div style="position:relative;height:260px"><canvas id="chart-success"></canvas></div>
+        </div>
+
+        <div class="panel rounded-xl p-5">
+          <div class="mb-5">
+            <span class="font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--ink-faint)]">accuracy vs speed</span>
+          </div>
+          <div style="position:relative;height:260px"><canvas id="chart-scatter"></canvas></div>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="panel rounded-xl p-5">
+          <div class="mb-5">
+            <span class="font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--ink-faint)]">avg tokens per case</span>
+          </div>
+          <div style="position:relative;height:240px"><canvas id="chart-tokens"></canvas></div>
+        </div>
+
+        <div class="panel rounded-xl p-5">
+          <div class="mb-5">
+            <span class="font-mono text-[11px] tracking-[0.12em] uppercase text-[var(--ink-faint)]">prompt evolution</span>
+            <div class="font-mono text-[10px] text-[var(--ink-faint)] mt-1">accuracy over 4 prompt iterations</div>
+          </div>
+          <div style="position:relative;height:240px"><canvas id="chart-evolution"></canvas></div>
+        </div>
+      </div>
+      <p class="font-mono text-[11px] text-[var(--ink-faint)] mt-10 mb-3 flex flex-wrap items-center gap-2">
+        <span class="text-signal/70">$</span> terminal-native
+        <code class="text-[var(--ink-dim)] bg-white/5 border border-[var(--line)] px-1.5 py-0.5 rounded">agest stats</code>
+        <code class="text-[var(--ink-dim)] bg-white/5 border border-[var(--line)] px-1.5 py-0.5 rounded">agest coverage</code>
+      </p>
+      <div class="win crt phosphor rounded-xl overflow-hidden">
+        <div class="win-bar px-4 py-2.5 flex items-center gap-2">
+          <div class="flex gap-1.5">
+            <div class="dot bg-red-500/60"></div>
+            <div class="dot bg-yellow-500/60"></div>
+            <div class="dot bg-green-500/60"></div>
+          </div>
+          <span class="font-mono text-[11px] text-[var(--ink-faint)] ml-2">terminal</span>
+        </div>
+        <pre class="p-5 text-[12.5px] leading-relaxed font-mono overflow-x-auto text-[var(--ink-dim)]"><code><span class="text-[var(--ink)]">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AGEST STATS  ·  12 reports found  ·  loan-eligibility
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+
+  Success Rate
+  ────────────────────────────────────────────────────────────
+  anthropic/claude-sonnet-4   <span class="text-[var(--pass)]">████████████████████</span>   <span class="text-[var(--pass)]">100%</span>
+  anthropic/claude-haiku-4-5  <span class="text-[var(--pass)]">███████████████████░</span>    <span class="text-[var(--pass)]">93%</span>
+  google/gemini-2.0-flash     <span class="text-[var(--pass)]">███████████████████░</span>    <span class="text-[var(--pass)]">93%</span>
+  openai/gpt-4.1-mini         <span class="text-[var(--pass)]">██████████████████░░</span>    <span class="text-[var(--pass)]">87%</span>
+  openai/gpt-4.1-nano         <span class="text-yellow-400">████████████████░░░░</span>    <span class="text-yellow-400">80%</span>
+  meta-llama/llama-3.1-8b     <span class="text-yellow-400">███████████████░░░░░</span>    <span class="text-yellow-400">73%</span>
+  mistralai/ministral-8b      <span class="text-yellow-400">████████████░░░░░░░░</span>    <span class="text-yellow-400">60%</span>
+
+  Capability Coverage  <span class="cm">(claude-sonnet-4)</span>
+  ────────────────────────────────────────────────────────────
+  refusal       <span class="text-[var(--pass)]">●●●●●</span>  5/5 scenes   100%  <span class="cm">ok (±0%)</span>
+  correctness   <span class="text-[var(--pass)]">●●●●●●●●</span> 8/8 scenes   96%  <span class="cm">ok (±5%)</span>
+  tool-use      <span class="text-[var(--pass)]">●●●●</span>   4/4 scenes   91%  <span class="cm">ok (±8%)</span>
+  robustness    <span class="text-yellow-400">●●●○○</span>  3/5 scenes   80%  <span class="text-yellow-400">low confidence</span>
+  format        <span class="text-yellow-400">●●○○</span>   2/4 scenes   --   <span class="text-yellow-400">under-tested</span>
+
+<span class="text-[var(--ink)]">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7 models · 12 total runs · 3 prompt versions
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span></code></pre>
+      </div>
+    </section>

@@ -35,7 +35,9 @@
     "stats": "tsx src/cli.ts stats",
     "usage": "tsx src/cli.ts usage",
     "preview": "tsx src/cli.ts preview",
-    "site:preview": "npx serve site -p 3000",
+    "web:dev": "pnpm --filter agest-site dev",
+    "web:build": "pnpm --filter agest-site build",
+    "web:preview": "pnpm --filter agest-site preview",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
     "release:major": "npm version major && git push && git push --tags",
@@ -44,6 +46,7 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "packageManager": "pnpm@11.4.0",
   "devDependencies": {
     "@langchain/core": "1.1.39",
     "@langchain/langgraph": "1.2.8",

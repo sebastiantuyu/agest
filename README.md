@@ -2,34 +2,50 @@
 
 [![Build Status](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml/badge.svg)](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml)
 
-A quantitative testing library for AI agents using a Jest-like syntax. Batteries included.
+**Quantitative testing for AI agents.** Define what "good" means for your agents —
+which behaviors, how much coverage, what statistical confidence, what cost — in
+version-controlled config, then measure every run against that bar.
 
-Agest benchmarks **system prompts, models, and tools** by running test scenarios
-("scenes") against a real agent and scoring the results — with token usage, USD
-cost, latency waterfalls, statistical significance, and a run history you can
-diff over time. The goal is the smallest possible API for fast iteration on
-agent quality.
+Agent quality is usually vibes and a handful of cherry-picked prompts. Agest makes
+it **measurable and enforceable**: run test scenarios ("scenes") against a real
+agent and get behavior **coverage**, a pass rate with a **confidence interval**,
+USD cost, and a run history you can diff — scored against a quality bar your team
+defines, not one we hand you.
+
+> **Coverage for behavior, not lines.** Line coverage told you which code ran.
+> Agest tells you which agent *behaviors* you've actually tested — and how much
+> you can trust each one.
 
 ## What you can do
 
+- **Measure behavior coverage** — tag scenes with capability areas (refusal,
+  correctness, format, tool-use, memory, performance, robustness), and
+  `agest coverage` renders a radar of which behaviors are tested, how well, and
+  where your confidence is still too thin to trust.
+- **Score statistically** — `.runs(n)` repeats a scene and reports a pass rate
+  with a Wilson 95% confidence interval, so "it passed once" becomes "it passes
+  94% of the time, ±4%."
+- **Make it opinionated for your team** — an extensible `agest.config.ts` sets
+  which capability areas matter, per-area confidence targets, your judge model,
+  pricing overrides, and run thresholds. Encode your team's quality standard once
+  and enforce it in CI.
 - **Assert on agent output** — refusals, substrings/regex, deep-structural
   equality, partial subsets, array membership, schema conformance, custom
   predicates, or an LLM-as-judge for fuzzy qualities.
 - **Test structured agents** — assert on the native value (objects stay
   objects), dot-path into it, or auto-validate every scene against a
   [Standard Schema](https://standardschema.dev) (zod 4, valibot, arktype).
-- **Run a test CLI** — `agest run` discovers files/dirs/globs, runs scenes in
-  parallel, and prints a vitest-style summary across files.
 - **Measure cost & latency** — per-scene token counts, USD cost (provider-
   reported or from a built-in pricing table), and a model/tool timeline
   waterfall.
-- **Score statistically** — `.runs(n)` repeats a scene and reports a pass rate
-  with a Wilson 95% confidence interval.
 - **Compare over time** — every run appends to a checkpoint log; `agest stats`
   charts success rate, tokens, duration, and attributes changes to the
   dimension (model / prompt / tools) that moved them.
-- **Plug in any agent** — first-class adapters for LangChain / LangGraph and
-  remote HTTP endpoints, plus a tracing helper for fully custom executors.
+- **Plug in any agent** — framework-agnostic executors; first-class adapters for
+  LangChain / LangGraph and remote HTTP endpoints, plus a tracing helper for
+  fully custom executors.
+- **Run a test CLI** — `agest run` discovers files/dirs/globs, runs scenes in
+  parallel, and prints a vitest-style summary across files.
 
 ## Install
 
