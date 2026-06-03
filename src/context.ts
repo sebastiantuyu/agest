@@ -223,12 +223,14 @@ export class AgentContext<T = string> {
       } else if (result.judgement?.verdict === "partial") {
         logger.info(`${indent}${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.yellow("PARTIAL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
         if (result.error) {
-          logger.info(`${indent}       ${c.yellow(result.error)}`);
+          // Headline only inline; full (possibly multi-line) error lands in the
+          // end-of-run failure recap, where it stays contiguous and attributable.
+          logger.info(`${indent}       ${c.yellow(firstLine(result.error))}`);
         }
       } else {
         logger.info(`${indent}${c.cyan(`[${i + 1}/${total}]`)} ${label} ... ${c.red("FAIL")}${c.dim(` (${ms}ms)`)}${runsLabel}`);
         if (result.error) {
-          logger.info(`${indent}       ${c.red(result.error)}`);
+          logger.info(`${indent}       ${c.red(firstLine(result.error))}`);
         }
       }
 
@@ -409,6 +411,24 @@ export class AgentContext<T = string> {
       await writeDiffEntry(report.systemPromptHash, firstMeta.systemPrompt, report.tools ?? [], report.model);
     }
 
+    // Consolidated failure recap. The live per-scene lines interleave under
+    // parallelism (and a custom executor may dump its own stack traces between
+    // them), so this grouped block at the end is the reliable place to read
+    // *what* failed and *where*: "<file/agent> › <suite> › <scene>", with the
+    // full (multi-line) error indented beneath each. Always printed when there
+    // are failures, even in --full mode where the YAML report follows.
+    if (failedResults.length > 0) {
+      const where = this._name ?? relative(process.cwd(), process.argv[1] ?? "");
+      logger.info(c.bold(c.red(`  Failures (${failedResults.length}):`)));
+      for (const r of failedResults) {
+        const loc = [where, r.suite].filter(Boolean).join(" › ");
+        const header = loc ? `${c.dim(`${loc} › `)}${c.bold(r.prompt)}` : c.bold(r.prompt);
+        logger.info(`\n    ${c.red("✗")} ${header}`);
+        if (r.error) logger.info(indentBlock(r.error, "        "));
+      }
+      logger.info("");
+    }
+
     const formatted = formatReport(report);
 
     // Default mode prints a one-line summary; `--full` dumps the whole report.
@@ -527,6 +547,24 @@ export function computeSuiteHash(definitions: SceneDefinition[]): string {
     assertions: d.assertions.map((a) => ({ field: a.field, fn: a.fn.toString() })),
   }));
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex").slice(0, 12);
+}
+
+/**
+ * First line of a possibly-multi-line message, trimmed and length-capped. Used
+ * for the inline FAIL line — a thrown executor error (e.g. a Zod dump) is often
+ * many lines; the headline goes inline and the full block goes in the recap.
+ */
+export function firstLine(msg: string, max = 200): string {
+  const line = (msg.split("\n")[0] ?? "").trim();
+  return line.length > max ? line.slice(0, max - 1) + "…" : line;
+}
+
+/** Prefix every line of a block so a multi-line message nests under `prefix`. */
+export function indentBlock(msg: string, prefix: string): string {
+  return msg
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
 }
 
 
