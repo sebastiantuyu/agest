@@ -6,7 +6,7 @@ export const softwareLd = {
     "operatingSystem": "Node.js 22+",
     "description": "Quantitative testing framework for AI agents. Measure behavior coverage and statistical confidence, track token and USD cost, and enforce a quality bar your team defines in version-controlled config.",
     "url": "https://sebastiantuyu.github.io/agest/",
-    "downloadUrl": "https://www.npmjs.com/package/@sebastiantuyu/agest",
+    "downloadUrl": "https://www.npmjs.com/package/@agest/core",
     "codeRepository": "https://github.com/sebastiantuyu/agest",
     "programmingLanguage": "TypeScript",
     "license": "https://opensource.org/licenses/MIT",
@@ -63,7 +63,7 @@ export const faqLd = {
         "name": "Is agest open source?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. agest is MIT-licensed and written in TypeScript for Node.js 22+. Install it with: npm i -D @sebastiantuyu/agest."
+          "text": "Yes. agest is MIT-licensed and written in TypeScript for Node.js 22+. Install it with: npm i -D @agest/core."
         }
       }
     ]

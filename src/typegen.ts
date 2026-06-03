@@ -22,7 +22,7 @@ import { c } from "./logger.js";
  * generated file augments. Invariant, so hardcoded rather than read from a
  * manifest.
  */
-export const PACKAGE_NAME = "@sebastiantuyu/agest";
+export const PACKAGE_NAME = "@agest/core";
 
 /**
  * Generated next to `agest.config.ts` (project root). Committed, not gitignored

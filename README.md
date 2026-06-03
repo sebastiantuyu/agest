@@ -50,8 +50,8 @@ defines, not one we hand you.
 ## Install
 
 ```sh
-npm i -D @sebastiantuyu/agest
-# or: pnpm add -D @sebastiantuyu/agest
+npm i -D @agest/core
+# or: pnpm add -D @agest/core
 ```
 
 The LangChain adapter is an optional peer dependency — install `@langchain/core`
@@ -65,8 +65,8 @@ against a real LLM through the LangChain adapter:
 ```typescript
 // language-assistant.agest.ts
 import "dotenv/config";
-import { agent, scene, expect } from "@sebastiantuyu/agest";
-import { langchain } from "@sebastiantuyu/agest/adapters";
+import { agent, scene, expect } from "@agest/core";
+import { langchain } from "@agest/core/adapters";
 import { createAgent } from "langchain";
 
 const reactAgent = createAgent({
@@ -156,7 +156,7 @@ Running 3 test files...
 ## Adapters
 
 Adapters turn a framework's agent into the `(input) => AgentResponse` executor
-Agest runs. Import them from `@sebastiantuyu/agest/adapters`.
+Agest runs. Import them from `@agest/core/adapters`.
 
 ### LangChain / LangGraph
 
@@ -166,7 +166,7 @@ and system prompt, and traces the run to capture token usage, USD cost, and a
 model/tool timeline — no manual wiring:
 
 ```typescript
-import { langchain } from "@sebastiantuyu/agest/adapters";
+import { langchain } from "@agest/core/adapters";
 
 await agent(langchain(reactAgent), () => {
   scene("Do you have the Cotton T-Shirt in XL?")
@@ -181,7 +181,7 @@ black box, supply static metadata (model, tools, system prompt) and, if needed,
 custom request/response shaping:
 
 ```typescript
-import { remote } from "@sebastiantuyu/agest/adapters";
+import { remote } from "@agest/core/adapters";
 
 const executor = remote("https://my-agent.example.com/chat", {
   headers: { Authorization: "Bearer sk-..." },
@@ -198,7 +198,7 @@ surface the cost/latency waterfall, use the `createTrace` helper and spread its
 `collect()` into the metadata:
 
 ```typescript
-import { agent, scene, expect, createTrace } from "@sebastiantuyu/agest";
+import { agent, scene, expect, createTrace } from "@agest/core";
 
 const myExecutor = async (input: string) => {
   const trace = await createTrace({ model: "openai/gpt-4.1-mini" });
@@ -402,7 +402,7 @@ stats view.
 Drop an `agest.config.ts` (or `.js`) in your project root:
 
 ```typescript
-import { defineConfig } from "@sebastiantuyu/agest";
+import { defineConfig } from "@agest/core";
 
 export default defineConfig({
   parallelism: 4,        // scenes run concurrently within a file

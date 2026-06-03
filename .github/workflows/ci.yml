@@ -20,7 +20,7 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile --filter @sebastiantuyu/agest
+      - run: pnpm install --frozen-lockfile --filter @agest/core
 
       - run: pnpm tsc --noEmit
 
@@ -38,6 +38,6 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile --filter @sebastiantuyu/agest
+      - run: pnpm install --frozen-lockfile --filter @agest/core
 
       - run: pnpm test

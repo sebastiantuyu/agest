@@ -44,7 +44,7 @@
 ## Facts
 
 - Language: TypeScript. Runtime: Node 22+. License: MIT.
-- Install: `npm i -D @sebastiantuyu/agest`
+- Install: `npm i -D @agest/core`
 - CLI: `agest run | coverage | stats | usage | preview`
 - Core API: `agent()`, `scene()`, `expect().toBe.*`, `.runs(n)`, `.turns(n)`,
   `defineConfig()`.
