@@ -457,11 +457,8 @@ export class AgentContext<T = string> {
       logger.info(`${c.dim("Snapshot saved to:")} ${c.cyan(recordPath)}`);
     }
 
-    // Per-case artifacts: the resolved response + per-assertion detail for EVERY
-    // scene (pass and fail), so a paid run stays inspectable later without a
-    // re-run. The sweep folder is created by the parent under `agest run`
-    // (AGEST_SWEEP_DIR); a standalone `tsx foo.test.ts` gets its own local one.
-    // Best-effort — never let writing break a run (mirrors the checkpoint below).
+    // Per-case artifacts. Parent (`agest run`) sets AGEST_SWEEP_DIR; a standalone
+    // run gets its own local sweep. Best-effort — never let it break a run.
     let artifactsDir: string | undefined;
     const sweepDir =
       process.env.AGEST_SWEEP_DIR ??

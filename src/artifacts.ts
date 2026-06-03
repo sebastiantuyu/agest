@@ -7,24 +7,14 @@ import type { AgentReport, CaseArtifact, SceneResult } from "./types.js";
 import { resolveValue, resolveText } from "./resolve.js";
 
 /**
- * Per-run/per-sweep artifact store. A run is expensive and rarely repeated, so
- * every `agent()` execution leaves an immutable, self-contained folder under
- * `.reports/sweeps/<sweep>/runs/<runId>/`: one JSON per scene (pass AND fail)
- * carrying the agent's resolved response, plus provenance and a failures
- * rollup. The goal is "diagnose (or double-check) without a re-run".
- *
- * `.reports/checkpoints.jsonl` (the cross-sweep time-series) is untouched — a
- * different job, written elsewhere.
+ * Per-run artifact store: every `agent()` execution leaves a self-contained
+ * folder so a run can be inspected later without a re-run. Separate from
+ * `.reports/checkpoints.jsonl` (the cross-sweep time-series).
  */
 
 const ACTUAL_VALUE_INLINE = 200;
 const RESOLVED_BLOCK_CAP = 2_000;
 
-// ---------------------------------------------------------------------------
-// Pure builders (no I/O — trivially testable)
-// ---------------------------------------------------------------------------
-
-/** Project a `SceneResult` to the on-disk per-case artifact. Pure. */
 export function buildCaseArtifact<T>(r: SceneResult<T>): CaseArtifact {
   const runBreakdown = r.runs?.map((run, index) => ({
     index,
@@ -51,10 +41,8 @@ export function buildCaseArtifact<T>(r: SceneResult<T>): CaseArtifact {
 }
 
 /**
- * A filesystem-safe, stable, collision-proof case filename. The 8-char hash of
- * the full `suite__prompt` is mandatory (not "for long prompts only") — it both
- * disambiguates two prompts sharing an 80-char prefix and keeps the same logical
- * case stably named across sweeps so it can be diffed.
+ * Filesystem-safe, stable filename. The hash suffix is mandatory — it keeps two
+ * prompts sharing an 80-char prefix distinct, and the name stable across sweeps.
  */
 export function slugCase(suite: string | undefined, prompt: string): string {
   const base = [suite, prompt].filter(Boolean).join("__");
@@ -64,11 +52,7 @@ export function slugCase(suite: string | undefined, prompt: string): string {
   return `${clipped}-${hash}`;
 }
 
-/**
- * Markdown failures rollup, DERIVED from the in-memory case artifacts (never
- * hand-authored, never re-read from JSON — single source of truth). Only red
- * cases appear.
- */
+/** Failures rollup derived from the in-memory artifacts (single source of truth). */
 export function renderFailuresMarkdown(failures: CaseArtifact[], agentName?: string): string {
   const lines: string[] = [];
   lines.push(agentName ? `# Failures — ${agentName}` : "# Failures", "");
@@ -99,11 +83,7 @@ export function renderFailuresMarkdown(failures: CaseArtifact[], agentName?: str
   return lines.join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Provenance
-// ---------------------------------------------------------------------------
-
-/** Current git SHA + dirty flag. Failure-tolerant — CI/sandboxes without git must not crash. */
+/** Current git SHA + dirty flag. Failure-tolerant — git may be absent in CI/sandboxes. */
 export function gitInfo(): { sha?: string; dirty: boolean } {
   try {
     const sha = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -122,12 +102,7 @@ export function gitInfo(): { sha?: string; dirty: boolean } {
   }
 }
 
-/**
- * The installed agest version — read from THIS package's package.json (resolved
- * relative to the module, NOT process.cwd() which is the consumer's project).
- * Works in both `dist/` (build) and `src/` (tsx dev): `../package.json` is the
- * package root from either.
- */
+/** agest's own version — resolved relative to this module, not the consumer's cwd. */
 export function agestVersion(): string {
   try {
     const pkg = JSON.parse(
@@ -152,15 +127,9 @@ export interface SweepManifest {
   totalCostUsd?: number | null;
 }
 
-// ---------------------------------------------------------------------------
-// Writers
-// ---------------------------------------------------------------------------
-
 /**
- * Write the per-run artifacts (run.json + cases/ + a run-local FAILURES.md) for
- * one `agent()` execution into the shared sweep folder. Returns the run dir
- * relative to cwd (the `artifactsDir` link stored on the checkpoint). The caller
- * wraps this in try/catch — artifact writing must never break a run.
+ * Write one run's artifacts (run.json + cases/ + FAILURES.md) into the sweep
+ * folder. Returns the run dir relative to cwd. Caller wraps in try/catch.
  */
 export async function writeRunArtifacts(
   sweepDir: string,
@@ -201,7 +170,6 @@ export async function writeRunArtifacts(
   return relative(process.cwd(), runDir);
 }
 
-/** Per-run provenance written to `run.json`. */
 function buildRunManifest(runId: string, report: AgentReport<unknown>) {
   return {
     runId,
@@ -229,10 +197,8 @@ function buildRunManifest(runId: string, report: AgentReport<unknown>) {
 }
 
 /**
- * Finalize a sweep AFTER every child has written its runs: the sweep-level
- * `manifest.json`, the concatenated top-level `FAILURES.md` (gathered from each
- * run's slice — no cross-process write contention), and the `latest` pointer.
- * Best-effort throughout; never throws.
+ * Seal a sweep once every child run is written: manifest, the concatenated
+ * FAILURES.md rollup, and the `latest` pointer. Best-effort; never throws.
  */
 export async function finalizeSweep(sweepDir: string, manifest: SweepManifest): Promise<void> {
   try {
@@ -289,10 +255,6 @@ async function updateLatest(sweepDir: string): Promise<void> {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Local helpers
-// ---------------------------------------------------------------------------
 
 function safeJson(value: unknown): string {
   try {

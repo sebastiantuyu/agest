@@ -153,18 +153,12 @@ export interface JudgeResult {
   criteria: string;
 }
 
-/**
- * One assertion (or the schema check) as it was evaluated against a scene's
- * response. `field` is the path the assertion read (e.g. "slots.cena.options",
- * or the synthetic "schema"). `actualValue` is the exact, safe-serialized input
- * the predicate received — captured on failure so a red case is diagnosable
- * from the artifact without a re-run. Omitted for the top-level value/text
- * fields (carried whole on the artifact) via a sentinel.
- */
+/** One assertion (or the schema check) evaluated against a scene's response. */
 export interface AssertionRecord {
   field: string;
   passed: boolean;
   message?: string;
+  /** Safe-serialized input the predicate received; captured on failure only. */
   actualValue?: string;
 }
 
@@ -188,11 +182,7 @@ export interface SceneResult<T = string> {
   suite?: string;
   /** Capability areas this scene exercises (carried from the definition). */
   tags?: string[];
-  /**
-   * Per-assertion (+ schema) records for the representative run. For a multi-run
-   * scene this is the first failing run when the scene failed, else the last run
-   * — kept consistent with the surfaced `error`.
-   */
+  /** Per-assertion (+ schema) records for the representative run. */
   assertions?: AssertionRecord[];
   runs?: RunResult<T>[];
   passRate?: number;
@@ -276,27 +266,18 @@ export interface CheckpointRecord {
   untaggedCount?: number;
   /** Relative path to the full YAML snapshot, set only when run with --record. */
   recordPath?: string;
-  /**
-   * Relative path to this run's per-case artifact dir
-   * (`.reports/sweeps/<sweep>/runs/<runId>`). Set whenever per-case artifacts
-   * were written — the forward-link a future detail loader can follow.
-   */
+  /** Relative path to this run's per-case artifact dir, when written. */
   artifactsDir?: string;
 }
 
-/**
- * The per-case artifact written under `runs/<runId>/cases/<slug>.json` for
- * EVERY scene (pass and fail). Carries the agent's resolved response so a run
- * stays inspectable later without a re-run — the diagnosis store. Derived
- * purely from a `SceneResult` (see `buildCaseArtifact`).
- */
+/** Per-case artifact written for every scene (pass and fail). See `buildCaseArtifact`. */
 export interface CaseArtifact {
   prompt: string;
   suite?: string;
   passed: boolean;
-  /** The agent's native output (resolveValue) — raw, serialized once at write time. */
+  /** The agent's native output (resolveValue). */
   resolvedValue: unknown;
-  /** The serialized text view (resolveText) — what the judge / text matchers saw. */
+  /** The serialized text view (resolveText). */
   text: string;
   judge?: JudgeResult;
   assertions: AssertionRecord[];

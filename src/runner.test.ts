@@ -359,8 +359,7 @@ describe("executeScene", () => {
     });
 
     it("surfaces the failing run's assertions for a multi-run scene", async () => {
-      // First two runs fail (model assertion), last passes → minority pass → the
-      // scene fails, and the surfaced assertions must be the failing run's, matching `error`.
+      // 2 of 3 runs fail → scene fails; surfaced assertions must be the failing run's.
       let call = 0;
       const executor = vi.fn().mockImplementation(async () => {
         call += 1;

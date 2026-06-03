@@ -25,11 +25,8 @@ function clip(s: string, max = ACTUAL_VALUE_CAP): string {
   return s.length > max ? s.slice(0, max) + `… (+${s.length - max} chars)` : s;
 }
 
-/**
- * The serialized input an assertion's predicate received, for the failure record.
- * The top-level value/text fields are already carried whole on the case artifact,
- * so dump a sentinel instead of duplicating the (potentially large) value.
- */
+/** Serialized predicate input for a failure record; sentinel for whole-value
+ *  fields (already carried on the artifact). */
 function clipForField(field: string, value: unknown): string {
   if (field === "value" || field === "response") return "<see resolvedValue>";
   if (field === "text") return "<see text>";
@@ -123,8 +120,7 @@ async function executeSingleRun<T>(
       if (!outcome.ok) {
         passed = false;
         error = `Schema validation failed — ${outcome.message}`;
-        // Schema has no other carrier in the artifact — record it as a synthetic
-        // assertion so a schema failure isn't an empty `assertions[]`.
+        // Synthetic record so a schema failure isn't an empty `assertions[]`.
         assertions.push({
           field: "schema",
           passed: false,
@@ -140,7 +136,6 @@ async function executeSingleRun<T>(
     const value = extractField(response, assertion.field);
     try {
       assertion.fn(value);
-      // Green records stay lean — no actualValue (the response is carried whole).
       assertions.push({ field: assertion.field, passed: true });
     } catch (err) {
       passed = false;
@@ -241,10 +236,8 @@ export async function executeScene<T = string>(
     ? undefined
     : failedRuns[0]?.error ?? "Majority of runs failed";
 
-  // Representative run for the surfaced detail (response/judgement/assertions).
-  // Aligned with `error` above: the first failing run when the scene failed,
-  // else the last run — so the artifact's assertions never describe a passing
-  // run next to a failing run's error.
+  // Representative run, aligned with `error` above: the failing run when the
+  // scene failed, else the last — so assertions never mismatch the error.
   const repRun = overallPassed ? lastRun : (failedRuns[0] ?? lastRun);
 
   // Aggregate tokens, cost, events across runs

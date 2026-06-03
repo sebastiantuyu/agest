@@ -91,9 +91,7 @@ async function run(args: string[]) {
   const summaryFile = join(mkdtempSync(join(tmpdir(), "agest-")), "summary.jsonl");
   const sweepId = randomUUID();
 
-  // One immutable, self-contained folder per sweep. Created ONCE here and passed
-  // to every child via AGEST_SWEEP_DIR — children write their per-case artifacts
-  // into it (the timestamp is encoded in the name so children never re-derive it).
+  // One sweep folder, created here and shared with every child via AGEST_SWEEP_DIR.
   const startedAt = new Date().toISOString();
   const sweepDir = join(
     process.cwd(),
@@ -145,9 +143,7 @@ async function run(args: string[]) {
   const records = readSummary(summaryFile);
   printRunSummary(records, files.length);
 
-  // Seal the sweep: sweep-level manifest (provenance + totals), the concatenated
-  // FAILURES.md rollup, and the `latest` pointer. Children already wrote their
-  // per-run artifacts into sweepDir; this is the parent's closing pass.
+  // Parent's closing pass: sweep manifest, FAILURES.md rollup, and `latest`.
   const summary = aggregateRunSummary(records, files.length);
   await finalizeSweep(sweepDir, {
     sweepId,
