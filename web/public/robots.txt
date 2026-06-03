@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sebastiantuyu.github.io/agest/sitemap.xml

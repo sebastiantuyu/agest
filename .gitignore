@@ -19,6 +19,9 @@ node_modules/
 # transpiled files
 dist/
 
+# astro generated types/cache
+.astro/
+
 # test coverage
 coverage/
 

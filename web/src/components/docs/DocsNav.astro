@@ -1,0 +1,34 @@
+---
+const base = import.meta.env.BASE_URL;
+const home = base.endsWith("/") ? base : base + "/";
+---
+
+<!-- Docs nav -->
+<nav class="nav">
+  <div class="max-w-6xl mx-auto px-6 h-[58px] flex items-center justify-between">
+    <a href={home} class="flex items-center gap-2.5 group">
+      <span class="font-mono text-[var(--ink-faint)] group-hover:text-[var(--ink)] transition-colors">&larr;</span>
+      <span class="pix text-[12px]">agest</span>
+      <span class="chip8 chip-ver">docs</span>
+    </a>
+    <div class="hidden md:flex items-center gap-8 text-[13px] font-mono">
+      <a href="#syntax" class="nav-link">syntax</a>
+      <a href="#capabilities" class="nav-link">capabilities</a>
+      <a href="#reports" class="nav-link">reports</a>
+      <a href="#roadmap" class="nav-link">roadmap</a>
+      <a href="#faq" class="nav-link">faq</a>
+    </div>
+    <div class="flex items-center gap-2.5">
+      <a href="https://github.com/sebastiantuyu/agest" target="_blank" rel="noopener" class="chip8">
+        <svg class="gico" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><rect x="3" y="0" width="1" height="2"/><rect x="0" y="2" width="7" height="1"/><rect x="1" y="3" width="5" height="1"/><rect x="2" y="4" width="3" height="1"/><rect x="1" y="5" width="2" height="1"/><rect x="4" y="5" width="2" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/></svg>
+        github
+      </a>
+      <a href="https://www.npmjs.com/package/@sebastiantuyu/agest" target="_blank" rel="noopener" class="chip8 chip-collapse">
+        <svg class="gico" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="7" height="1"/><rect x="0" y="3" width="7" height="1"/><rect x="0" y="6" width="7" height="1"/><rect x="0" y="0" width="1" height="7"/><rect x="6" y="0" width="1" height="7"/></svg>
+        npm
+      </a>
+    </div>
+  </div>
+</nav>
+
+<div class="ruler layer mt-px"></div>

@@ -1,0 +1,91 @@
+---
+import "../styles/global.css";
+import { softwareLd, faqLd } from "../seo";
+
+interface Props {
+  title?: string;
+  description?: string;
+  canonical?: string;
+  ogUrl?: string;
+  faq?: boolean;
+}
+
+const {
+  title = "agest — Quantitative testing for AI agents",
+  description =
+    "Quantitative testing for AI agents. Measure behavior coverage and statistical confidence, track token cost, and enforce a quality bar your team defines in config. TypeScript, framework-agnostic, MIT.",
+  canonical = "https://sebastiantuyu.github.io/agest/",
+  ogUrl = "https://sebastiantuyu.github.io/agest/",
+  faq = false,
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL;
+const root = base.endsWith("/") ? base : base + "/";
+const favicon = root + "favicon.png";
+const faviconSvg = root + "favicon.svg";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08080a" />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" type="image/svg+xml" href={faviconSvg} />
+    <link rel="icon" type="image/png" href={favicon} />
+    <link rel="canonical" href={canonical} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content="Sebastian Tuyu" />
+    <meta
+      name="keywords"
+      content="AI agent testing, agent evaluation, LLM testing, agent eval framework, behavior coverage, agent quality, TypeScript, prompt testing, LLM-as-judge"
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="agest" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={ogUrl} />
+    <meta property="og:image" content="https://sebastiantuyu.github.io/agest/favicon.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://sebastiantuyu.github.io/agest/favicon.png" />
+
+    <script type="application/ld+json" set:html={JSON.stringify(softwareLd)} />
+    {faq && <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />}
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Schibsted+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <slot name="head" />
+  </head>
+
+  <body class="min-h-screen font-sans antialiased">
+    <slot />
+
+    <script>
+      // Reveal-on-scroll for .reveal sections
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add("visible");
+              observer.unobserve(e.target);
+            }
+          });
+        },
+        { threshold: 0.12 },
+      );
+      document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
+    </script>
+  </body>
+</html>
