@@ -1,3 +1,12 @@
+```js
+   █████╗  ██████╗ ███████╗███████╗████████╗
+  ██╔══██╗██╔════╝ ██╔════╝██╔════╝╚══██╔══╝
+  ███████║██║  ███╗█████╗  ███████╗   ██║
+  ██╔══██║██║   ██║██╔══╝  ╚════██║   ██║
+  ██║  ██║╚██████╔╝███████╗███████║   ██║
+   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝   ╚═╝
+```
+
 # Agest
 
 [![Build Status](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml/badge.svg)](https://github.com/sebastiantuyu/agest/actions/workflows/publish.yml)
